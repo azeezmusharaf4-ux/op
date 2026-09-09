@@ -1,0 +1,6 @@
+{
+  "name": "OPay",
+  "description": "OPay - Beyond Banking. Seamless mobile money, transfers, bill payments, and smart savings.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

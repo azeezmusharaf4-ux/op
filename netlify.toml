@@ -1,0 +1,41 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Forward API routes to Netlify serverless functions
+[[redirects]]
+  from = "/api/resolve-account"
+  to = "/.netlify/functions/resolve-account"
+  status = 200
+
+[[redirects]]
+  from = "/api/banks"
+  to = "/.netlify/functions/banks"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# SPA Fallback for client-side routing on Netlify
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache static assets for ultra-fast loading across all devices
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "ALLOWALL"
+    Access-Control-Allow-Origin = "*"
