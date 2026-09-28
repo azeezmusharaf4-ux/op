@@ -10,8 +10,10 @@ import {
   RegisteredUserAccount,
   SmsNotificationLog,
   VerificationStatus,
-  VerificationAuditLog
+  VerificationAuditLog,
+  UserRecipientItem
 } from '../types';
+import { normalizePhone, isSamePhone } from '../utils/phone';
 import { generateReference, generateSessionId, formatNgn } from '../utils/formatters';
 import { soundManager } from '../utils/audio';
 import { hashCredentialsOnBackend, verifyPinOnBackend, updatePinOnBackend, VerifyPinResult, clientSha256 } from '../utils/security';
@@ -1078,7 +1080,8 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       const manualLogout = localStorage.getItem(MANUAL_LOGOUT_KEY) === 'true';
       if (manualLogout) return false;
       const savedActive = localStorage.getItem(ACTIVE_ACCOUNT_KEY);
-      return Boolean(savedActive);
+      const token = localStorage.getItem('opay_session_token');
+      return Boolean(savedActive && token);
     } catch {
       return false;
     }
@@ -1182,6 +1185,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
               localStorage.removeItem(MANUAL_LOGOUT_KEY);
             } catch {}
 
+            // Authoritatively set balance and transactions from server database
             setOpayBalance(fullAccount.balanceNgn);
             setUserProfile(fullAccount.userProfile);
             setCards(fullAccount.cards || DEFAULT_CARDS);
@@ -1189,6 +1193,18 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
             setActiveLoan(fullAccount.activeLoan || DEFAULT_LOAN);
             setTransactions(fullAccount.transactions || []);
             setNotifications(fullAccount.notifications || []);
+
+            setRegisteredAccounts(prev => {
+              const existingIdx = prev.findIndex(a => a.id === fullAccount.id);
+              const next = existingIdx >= 0
+                ? prev.map(a => a.id === fullAccount.id ? { ...a, ...fullAccount } : a)
+                : [fullAccount, ...prev];
+              try {
+                localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+
             isInitialServerLoaded.current = true;
             return;
           }
@@ -1214,6 +1230,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
 
   useEffect(() => {
     loadAccountsFromServer();
+    refreshAccountsFromServer().catch(() => {});
   }, []);
 
   // Save active account ID
@@ -1237,41 +1254,6 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       // Ignore
     }
   }, [smsLogs]);
-
-  // Sync active account data
-  useEffect(() => {
-    if (!currentAccountId) return;
-    const current = registeredAccounts.find(a => a.id === currentAccountId);
-    if (current) {
-      setOpayBalance(current.balanceNgn);
-      setUserProfile(current.userProfile);
-      setCards(current.cards || DEFAULT_CARDS);
-      setSafeBoxes(current.safeBoxes || []);
-      setActiveLoan(current.activeLoan || DEFAULT_LOAN);
-      setTransactions(current.transactions || []);
-      setNotifications(current.notifications || []);
-    }
-  }, [currentAccountId]);
-
-  // Save state changes back to the active user account
-  useEffect(() => {
-    if (!currentAccountId || !isAuthenticated) return;
-    setRegisteredAccounts(prev => prev.map(acc => {
-      if (acc.id === currentAccountId) {
-        return {
-          ...acc,
-          balanceNgn: opayBalance,
-          userProfile,
-          cards,
-          safeBoxes,
-          activeLoan,
-          transactions,
-          notifications,
-        };
-      }
-      return acc;
-    }));
-  }, [opayBalance, userProfile, cards, safeBoxes, activeLoan, transactions, notifications, currentAccountId, isAuthenticated]);
 
   const toggleBalanceVisibility = () => {
     setIsBalanceHidden(prev => !prev);
@@ -1372,21 +1354,23 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     verificationLog?: VerificationAuditLog;
   }): Promise<{ success: boolean; error?: string }> => {
     const cleanPhone = data.phone.trim();
-    const cleanEmail = (data.email || `${cleanPhone.replace(/\D/g, '')}@opay.ng`).trim().toLowerCase();
+    const phoneNorm = normalizePhone(cleanPhone);
+    const cleanEmail = (data.email || `${phoneNorm.national11 || cleanPhone.replace(/\D/g, '')}@opay.ng`).trim().toLowerCase();
     const cleanNin = (data.nin || '10000000000').trim();
     const cleanPassword = (data.password || '123456').trim();
     const cleanPin = data.pin.trim();
     const cleanFullName = data.fullName.trim().toUpperCase();
 
-    // Check duplicate
+    // Check duplicate using normalized phone
     const exists = registeredAccounts.some(
-      acc => acc.phone.replace(/\D/g, '') === cleanPhone.replace(/\D/g, '') ||
+      acc => isSamePhone(acc.phone, cleanPhone) ||
+             (acc.normalizedPhone && isSamePhone(acc.normalizedPhone, cleanPhone)) ||
              (data.email && acc.email.toLowerCase() === cleanEmail)
     );
     if (exists) {
       return {
         success: false,
-        error: 'An account with this phone number already exists. Please sign in.',
+        error: 'This phone number is already registered. Please log in or use Forgot Password.',
       };
     }
 
@@ -1394,13 +1378,13 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     const hashResult = await hashCredentialsOnBackend(cleanPassword, cleanPin);
 
     const firstName = cleanFullName.split(' ')[0] || 'OPay User';
-    const derivedAccNum = cleanPhone.replace(/\D/g, '').slice(-10);
+    const derivedAccNum = phoneNorm.subscriber10 || cleanPhone.replace(/\D/g, '').slice(-10);
     const maskedNin = `•••••••${cleanNin.slice(-4)}`;
 
     const newProfile: OPayUserProfile = {
       name: firstName,
       fullName: cleanFullName,
-      phone: cleanPhone.startsWith('+') ? cleanPhone : `+234${cleanPhone.replace(/^0/, '')}`,
+      phone: phoneNorm.e164 || (cleanPhone.startsWith('+') ? cleanPhone : `+234${cleanPhone.replace(/^0/, '')}`),
       accountNumber: derivedAccNum,
       tier: 3,
       tierName: 'Tier 3 (Verified)',
@@ -1433,16 +1417,17 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     const newAccount: RegisteredUserAccount = {
       id: `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       fullName: cleanFullName,
-      phone: cleanPhone,
+      phone: phoneNorm.national11 || cleanPhone,
+      normalizedPhone: phoneNorm.national11 || cleanPhone,
       email: cleanEmail,
       ninMasked: maskedNin,
-      password: cleanPassword,
-      customPin: cleanPin,
       loginPasswordHash: hashResult.passwordHash,
       transactionPinHash: hashResult.pinHash,
       pinSalt: hashResult.salt,
       failedPinAttempts: 0,
       pinLockoutUntil: null,
+      accountStatus: 'active',
+      lastLoginAt: Date.now(),
       verificationStatus: 'account_active',
       verificationLog: data.verificationLog || {
         ninVerifiedAt: Date.now(),
@@ -1468,16 +1453,8 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         status: 'eligible',
       },
       notifications: [welcomeNotification],
+      recentRecipients: [],
     };
-
-    saveStoredPinForAccount(newAccount, cleanPin);
-    saveStoredPasswordForAccount(newAccount, cleanPassword);
-    if (hashResult.pinHash) {
-      localStorage.setItem(`opay_pin_hash_${newAccount.id}`, hashResult.pinHash);
-    }
-    if (hashResult.salt) {
-      localStorage.setItem(`opay_pin_salt_${newAccount.id}`, hashResult.salt);
-    }
 
     // Persist to server database and obtain unique session token
     try {
@@ -1497,36 +1474,59 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         }),
       });
       const regData = await regRes.json();
-      if (regData.success && regData.token) {
+      if (!regRes.ok || !regData.success) {
+        return { success: false, error: regData.error || regData.message || 'Registration failed.' };
+      }
+
+      const createdAccount: RegisteredUserAccount = {
+        ...(regData.account || newAccount),
+        customPin: cleanPin,
+      };
+
+      if (regData.token) {
         localStorage.setItem('opay_session_token', regData.token);
       }
-    } catch (err) {
+
+      saveStoredPinForAccount(createdAccount, cleanPin);
+      saveStoredPasswordForAccount(createdAccount, cleanPassword);
+      if (hashResult.pinHash) {
+        localStorage.setItem(`opay_pin_hash_${createdAccount.id}`, hashResult.pinHash);
+      }
+      if (hashResult.salt) {
+        localStorage.setItem(`opay_pin_salt_${createdAccount.id}`, hashResult.salt);
+      }
+
+      const updatedList = [createdAccount, ...registeredAccounts.filter(a => a.id !== createdAccount.id)];
+      setRegisteredAccounts(updatedList);
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updatedList));
+      } catch {}
+
+      setCurrentAccountId(createdAccount.id);
+      setRememberedAccountId(createdAccount.id);
+      setIsAuthenticated(true);
+      setIsManuallyLoggedOut(false);
+      try {
+        localStorage.setItem(ACTIVE_ACCOUNT_KEY, createdAccount.id);
+        localStorage.setItem(REMEMBERED_ACCOUNT_KEY, createdAccount.id);
+        localStorage.removeItem(MANUAL_LOGOUT_KEY);
+      } catch {}
+
+      setOpayBalance(createdAccount.balanceNgn || 0.00);
+      setUserProfile(createdAccount.userProfile);
+      setCards([]);
+      setSafeBoxes([]);
+      setActiveLoan(createdAccount.activeLoan || DEFAULT_LOAN);
+      setTransactions([]);
+      setNotifications(createdAccount.notifications || [welcomeNotification]);
+
+      triggerToast(welcomeNotification);
+
+      return { success: true };
+    } catch (err: unknown) {
       console.warn('Registration server notice:', err);
+      return { success: false, error: 'Network error registering account. Please try again.' };
     }
-
-    const updatedList = [newAccount, ...registeredAccounts];
-    setRegisteredAccounts(updatedList);
-    setCurrentAccountId(newAccount.id);
-    setRememberedAccountId(newAccount.id);
-    setIsAuthenticated(true);
-    setIsManuallyLoggedOut(false);
-    try {
-      localStorage.setItem(ACTIVE_ACCOUNT_KEY, newAccount.id);
-      localStorage.setItem(REMEMBERED_ACCOUNT_KEY, newAccount.id);
-      localStorage.removeItem(MANUAL_LOGOUT_KEY);
-    } catch {}
-
-    setOpayBalance(0.00);
-    setUserProfile(newAccount.userProfile);
-    setCards([]);
-    setSafeBoxes([]);
-    setActiveLoan(newAccount.activeLoan);
-    setTransactions([]);
-    setNotifications(newAccount.notifications);
-
-    triggerToast(welcomeNotification);
-
-    return { success: true };
   };
 
   // 2. Login User Account (Strict authentication and user data isolation)
@@ -1608,6 +1608,17 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         // Strictly set the logged-in user's transaction history from the server!
         setTransactions(account.transactions || []);
         setNotifications(account.notifications || []);
+
+        setRegisteredAccounts(prev => {
+          const existingIdx = prev.findIndex(a => a.id === authoritativeAccount.id);
+          const next = existingIdx >= 0
+            ? prev.map(a => a.id === authoritativeAccount.id ? authoritativeAccount : a)
+            : [authoritativeAccount, ...prev];
+          try {
+            localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
 
         const loginNotif: DemoNotification = {
           id: `notif-login-${Date.now()}`,
@@ -2154,9 +2165,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Insufficient balance. Available: ${formatNgn(opayBalance)}`);
     }
 
-    const newBalance = opayBalance - amountNgn;
-    setOpayBalance(newBalance);
-
+    const token = localStorage.getItem('opay_session_token');
     const now = Date.now();
     const networkExpiresAt = now + 3600 * 1000; // Exactly 1 Hour Lifetime
     const sessionSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -2168,10 +2177,12 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       'CBN Settlement Router',
     ];
 
+    const txRef = generateReference();
     const txId = `tx-op-${now}`;
-    const newTx: Transaction = {
+    let authoritativeBalance = opayBalance - amountNgn;
+    let authoritativeTx: Transaction = {
       id: txId,
-      reference: generateReference(),
+      reference: txRef,
       type: 'op_transfer',
       title: `Transfer to ${recipientName}`,
       description: remark || `Transfer to OPay User (${recipientPhone})`,
@@ -2190,7 +2201,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0.00, // OPay to OPay is always 100% free
       category: 'outflow',
-      balanceAfterNgn: newBalance,
+      balanceAfterNgn: authoritativeBalance,
       sessionId: generateSessionId(),
       remark: remark || undefined,
       networkRoutingSession: sessionRoutingCode,
@@ -2199,7 +2210,49 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       networkSessionDeleted: false,
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    // 1. Dispatch transfer authoritatively to persistent server database first (Atomic operation)
+    if (token) {
+      try {
+        const transferRes = await fetch('/api/transfers/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            senderId: currentAccountId,
+            type: 'op_transfer',
+            recipientName,
+            recipientPhoneOrAccount: recipientPhone,
+            bankName: 'OPay',
+            amountNgn,
+            remark,
+            reference: txRef,
+          }),
+        });
+
+        if (!transferRes.ok) {
+          const errData = await transferRes.json().catch(() => ({}));
+          if (soundEnabled) soundManager.playErrorSound();
+          throw new Error(errData.error || errData.message || 'Transfer failed.');
+        }
+
+        const transferData = await transferRes.json();
+        if (transferData.transaction) {
+          authoritativeTx = transferData.transaction;
+        }
+        if (typeof transferData.balanceNgn === 'number') {
+          authoritativeBalance = transferData.balanceNgn;
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error) throw err;
+        throw new Error('Transfer could not be processed.');
+      }
+    }
+
+    // 2. Commit balance and transaction to state ONLY AFTER server confirms success
+    setOpayBalance(authoritativeBalance);
+    setTransactions(prev => [authoritativeTx, ...prev.filter(t => t.id !== authoritativeTx.id)]);
 
     if (soundEnabled) soundManager.playSuccessSound();
 
@@ -2214,7 +2267,6 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       // Ignore
     }
 
-    // 1. Dispatch to Interbank Banking Networks via Server API
     try {
       fetch('/api/banking-network/dispatch', {
         method: 'POST',
@@ -2225,31 +2277,9 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
           recipientBank: 'OPay',
           recipientAccount: recipientPhone,
           amountNgn,
-          reference: newTx.reference,
+          reference: authoritativeTx.reference,
         }),
       }).catch(err => console.warn('Banking network dispatch warning:', err));
-
-      const token = localStorage.getItem('opay_session_token');
-      if (token) {
-        fetch('/api/user/transactions/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'op_transfer',
-            amountNgn,
-            title: newTx.title,
-            description: newTx.description,
-            recipientName,
-            recipientAccount: recipientPhone,
-            bankName: 'OPay',
-            category: 'outflow',
-            remark,
-          }),
-        }).catch(() => {});
-      }
     } catch {
       // Ignore
     }
@@ -2260,7 +2290,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       recipientName,
       senderName: userProfile.fullName,
       amountNgn,
-      reference: newTx.reference,
+      reference: authoritativeTx.reference,
     });
 
     // 3. Create Corresponding Inflow Transaction and Immediate Notification for Recipient
@@ -2279,7 +2309,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const recipientInflowTx: Transaction = {
       id: inflowTxId,
-      reference: newTx.reference,
+      reference: authoritativeTx.reference,
       type: 'op_transfer',
       title: `Transfer from ${userProfile.fullName}`,
       description: remark || `Transfer received from ${userProfile.fullName} (${userProfile.accountNumber})`,
@@ -2299,7 +2329,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       feeNgn: 0.00,
       category: 'inflow',
       balanceAfterNgn: recipientBalanceAfter,
-      sessionId: newTx.sessionId,
+      sessionId: authoritativeTx.sessionId,
       remark: remark || undefined,
       networkRoutingSession: sessionRoutingCode,
       networkRoutes: standardRoutes,
@@ -2320,12 +2350,29 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       status: 'successful',
     };
 
-    // Update recipient in registered accounts list
+    // Update sender account and recipient (if locally cached) in registered accounts list
     setRegisteredAccounts(prev => {
-      let found = false;
       const updated = prev.map(acc => {
+        if (acc.id === currentAccountId) {
+          const cleanRecip = recipientPhone.replace(/\D/g, '');
+          const filteredRecip = (acc.recentRecipients || []).filter(r => r.account.replace(/\D/g, '') !== cleanRecip);
+          const newRecip: UserRecipientItem = {
+            id: `recip-${now}`,
+            name: recipientName,
+            account: recipientPhone,
+            bank: 'OPay',
+            bankCode: '999992',
+            isOpay: true,
+            lastUsedAt: now,
+          };
+          return {
+            ...acc,
+            balanceNgn: authoritativeBalance,
+            transactions: [authoritativeTx, ...(acc.transactions || []).filter(t => t.id !== authoritativeTx.id)],
+            recentRecipients: [newRecip, ...filteredRecip].slice(0, 20),
+          };
+        }
         if (recipMatch && acc.id === recipMatch.id) {
-          found = true;
           const updatedBal = (acc.balanceNgn || 0) + amountNgn;
           return {
             ...acc,
@@ -2341,53 +2388,9 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         return acc;
       });
 
-      if (!found && !recipMatch) {
-        // Auto-create a registered user account for the recipient so switching to it works seamlessly
-        const newUserId = `acc-user-${now}`;
-        const autoAccount: RegisteredUserAccount = {
-          id: newUserId,
-          fullName: recipientName,
-          phone: recipientPhone,
-          email: `${recipientName.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-          ninMasked: '•••••••8491',
-          password: 'password123',
-          loginPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
-          transactionPinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
-          pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
-          failedPinAttempts: 0,
-          pinLockoutUntil: null,
-          verificationStatus: 'account_active',
-          accountNumber: recipientPhone.replace(/\D/g, '').slice(-10) || '8012345678',
-          balanceNgn: 15000 + amountNgn,
-          createdAt: now,
-          userProfile: {
-            name: recipientName.split(' ')[0] || 'OPay User',
-            fullName: recipientName,
-            phone: recipientPhone,
-            accountNumber: recipientPhone.replace(/\D/g, '').slice(-10) || '8012345678',
-            tier: 3,
-            tierName: 'Tier 3',
-            dailyLimitNgn: 5000000,
-            singleMaxNgn: 1000000,
-            avatarUrl: '',
-            todaySalesNgn: 0,
-            savingsBalanceNgn: 10000,
-            owealthBalanceNgn: 15000 + amountNgn,
-            cashbackPointsNgn: 60,
-            isKycVerified: true,
-            email: `${recipientName.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-            bvnLinked: true,
-            ninLinked: true,
-            gender: 'Verified User',
-          },
-          transactions: [recipientInflowTx],
-          cards: DEFAULT_CARDS,
-          safeBoxes: DEFAULT_SAFEBOXES,
-          activeLoan: DEFAULT_LOAN,
-          notifications: [recipientInAppNotif],
-        };
-        return [...updated, autoAccount];
-      }
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
 
       return updated;
     });
@@ -2407,7 +2410,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     setNotifications(prev => [notif, ...prev]);
     triggerToast(notif);
 
-    return newTx;
+    return authoritativeTx;
   };
 
   // 6. Send Interbank Transfer
@@ -2419,16 +2422,14 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     amountNgn: number;
     remark?: string;
   }): Promise<Transaction> => {
-    const { bankName, accountNumber, accountName, amountNgn, remark } = params;
+    const { bankName, accountNumber, accountName, amountNgn, remark, bankCode } = params;
 
     if (opayBalance < amountNgn) {
       if (soundEnabled) soundManager.playErrorSound();
       throw new Error(`Insufficient balance. Available: ${formatNgn(opayBalance)}`);
     }
 
-    const newBalance = opayBalance - amountNgn;
-    setOpayBalance(newBalance);
-
+    const token = localStorage.getItem('opay_session_token');
     const now = Date.now();
     const networkExpiresAt = now + 3600 * 1000; // Exactly 1 Hour Lifetime
     const sessionSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -2440,10 +2441,12 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       'CBN Settlement Router',
     ];
 
+    const txRef = generateReference();
     const txId = `tx-bank-${now}`;
-    const newTx: Transaction = {
+    let authoritativeBalance = opayBalance - amountNgn;
+    let authoritativeTx: Transaction = {
       id: txId,
-      reference: generateReference(),
+      reference: txRef,
       type: 'bank_transfer',
       title: `Transfer to ${accountName}`,
       description: remark || `Interbank transfer to ${accountNumber} (${bankName})`,
@@ -2462,7 +2465,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0.00, // Free transfers
       category: 'outflow',
-      balanceAfterNgn: newBalance,
+      balanceAfterNgn: authoritativeBalance,
       sessionId: generateSessionId(),
       remark: remark || undefined,
       networkRoutingSession: sessionRoutingCode,
@@ -2471,7 +2474,50 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       networkSessionDeleted: false,
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    // 1. Dispatch transfer to persistent server database first (Atomic operation)
+    if (token) {
+      try {
+        const transferRes = await fetch('/api/transfers/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            senderId: currentAccountId,
+            type: 'bank_transfer',
+            recipientName: accountName,
+            recipientPhoneOrAccount: accountNumber,
+            bankName,
+            bankCode,
+            amountNgn,
+            remark,
+            reference: txRef,
+          }),
+        });
+
+        if (!transferRes.ok) {
+          const errData = await transferRes.json().catch(() => ({}));
+          if (soundEnabled) soundManager.playErrorSound();
+          throw new Error(errData.error || errData.message || 'Interbank transfer failed.');
+        }
+
+        const transferData = await transferRes.json();
+        if (transferData.transaction) {
+          authoritativeTx = transferData.transaction;
+        }
+        if (typeof transferData.balanceNgn === 'number') {
+          authoritativeBalance = transferData.balanceNgn;
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error) throw err;
+        throw new Error('Transfer could not be processed.');
+      }
+    }
+
+    // 2. Commit balance and transaction to state ONLY AFTER server confirms success
+    setOpayBalance(authoritativeBalance);
+    setTransactions(prev => [authoritativeTx, ...prev.filter(t => t.id !== authoritativeTx.id)]);
 
     if (soundEnabled) soundManager.playSuccessSound();
 
@@ -2486,7 +2532,6 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       // Ignore
     }
 
-    // 1. Dispatch to Interbank Banking Networks via Server API
     try {
       fetch('/api/banking-network/dispatch', {
         method: 'POST',
@@ -2497,31 +2542,9 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
           recipientBank: bankName,
           recipientAccount: accountNumber,
           amountNgn,
-          reference: newTx.reference,
+          reference: authoritativeTx.reference,
         }),
       }).catch(err => console.warn('Banking network dispatch warning:', err));
-
-      const token = localStorage.getItem('opay_session_token');
-      if (token) {
-        fetch('/api/user/transactions/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'bank_transfer',
-            amountNgn,
-            title: newTx.title,
-            description: newTx.description,
-            recipientName: accountName,
-            recipientAccount: accountNumber,
-            bankName,
-            category: 'outflow',
-            remark,
-          }),
-        }).catch(() => {});
-      }
     } catch {
       // Ignore
     }
@@ -2532,7 +2555,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       recipientName: accountName,
       senderName: userProfile.fullName,
       amountNgn,
-      reference: newTx.reference,
+      reference: authoritativeTx.reference,
     });
 
     // 3. Create Corresponding Inflow Transaction and Immediate Notification for Recipient
@@ -2551,7 +2574,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const recipientInflowTx: Transaction = {
       id: inflowTxId,
-      reference: newTx.reference,
+      reference: authoritativeTx.reference,
       type: 'bank_transfer',
       title: `Transfer from ${userProfile.fullName}`,
       description: remark || `Interbank transfer received from ${userProfile.fullName} (${userProfile.accountNumber}) via ${bankName}`,
@@ -2571,7 +2594,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       feeNgn: 0.00,
       category: 'inflow',
       balanceAfterNgn: recipientBalanceAfter,
-      sessionId: newTx.sessionId,
+      sessionId: authoritativeTx.sessionId,
       remark: remark || undefined,
       networkRoutingSession: sessionRoutingCode,
       networkRoutes: standardRoutes,
@@ -2592,12 +2615,29 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       status: 'successful',
     };
 
-    // Update recipient in registered accounts list
+    // Update sender account and recipient (if locally cached) in registered accounts list
     setRegisteredAccounts(prev => {
-      let found = false;
       const updated = prev.map(acc => {
+        if (acc.id === currentAccountId) {
+          const cleanRecip = accountNumber.replace(/\D/g, '');
+          const filteredRecip = (acc.recentRecipients || []).filter(r => r.account.replace(/\D/g, '') !== cleanRecip);
+          const newRecip: UserRecipientItem = {
+            id: `recip-${now}`,
+            name: accountName,
+            account: accountNumber,
+            bank: bankName,
+            bankCode,
+            isOpay: bankName.toLowerCase().includes('opay'),
+            lastUsedAt: now,
+          };
+          return {
+            ...acc,
+            balanceNgn: authoritativeBalance,
+            transactions: [authoritativeTx, ...(acc.transactions || []).filter(t => t.id !== authoritativeTx.id)],
+            recentRecipients: [newRecip, ...filteredRecip].slice(0, 20),
+          };
+        }
         if (recipMatch && acc.id === recipMatch.id) {
-          found = true;
           const updatedBal = (acc.balanceNgn || 0) + amountNgn;
           return {
             ...acc,
@@ -2613,53 +2653,9 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         return acc;
       });
 
-      if (!found && !recipMatch) {
-        // Auto-create a registered user account for the recipient so switching to it works seamlessly
-        const newUserId = `acc-user-${now}`;
-        const autoAccount: RegisteredUserAccount = {
-          id: newUserId,
-          fullName: accountName,
-          phone: accountNumber,
-          email: `${accountName.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-          ninMasked: '•••••••9102',
-          password: 'password123',
-          loginPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
-          transactionPinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
-          pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
-          failedPinAttempts: 0,
-          pinLockoutUntil: null,
-          verificationStatus: 'account_active',
-          accountNumber: accountNumber.replace(/\D/g, '').slice(-10) || '8012345678',
-          balanceNgn: 20000 + amountNgn,
-          createdAt: now,
-          userProfile: {
-            name: accountName.split(' ')[0] || 'User',
-            fullName: accountName,
-            phone: accountNumber,
-            accountNumber: accountNumber.replace(/\D/g, '').slice(-10) || '8012345678',
-            tier: 3,
-            tierName: 'Tier 3',
-            dailyLimitNgn: 5000000,
-            singleMaxNgn: 1000000,
-            avatarUrl: '',
-            todaySalesNgn: 0,
-            savingsBalanceNgn: 10000,
-            owealthBalanceNgn: 20000 + amountNgn,
-            cashbackPointsNgn: 40,
-            isKycVerified: true,
-            email: `${accountName.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-            bvnLinked: true,
-            ninLinked: true,
-            gender: 'Verified User',
-          },
-          transactions: [recipientInflowTx],
-          cards: DEFAULT_CARDS,
-          safeBoxes: DEFAULT_SAFEBOXES,
-          activeLoan: DEFAULT_LOAN,
-          notifications: [recipientInAppNotif],
-        };
-        return [...updated, autoAccount];
-      }
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
 
       return updated;
     });
@@ -2679,7 +2675,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     setNotifications(prev => [notif, ...prev]);
     triggerToast(notif);
 
-    return newTx;
+    return authoritativeTx;
   };
 
   // 3. Cardless ATM Withdrawal
@@ -2689,16 +2685,14 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Insufficient balance. Available: ${formatNgn(opayBalance)}`);
     }
 
-    const newBalance = opayBalance - amountNgn;
-    setOpayBalance(newBalance);
-
-    // 6 digit ATM Cashout Code
+    const token = localStorage.getItem('opay_session_token');
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const txId = `tx-atm-${Date.now()}`;
+    const ref = generateReference();
 
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance - amountNgn;
+    let newTx: Transaction = {
+      id: `tx-atm-${Date.now()}`,
+      reference: ref,
       type: 'atm_withdraw',
       title: 'Cardless ATM Withdrawal',
       description: `Generated Cashout Code: ${code} (Valid for 15 mins)`,
@@ -2721,7 +2715,65 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'atm_withdraw',
+            amountNgn,
+            title: newTx.title,
+            description: newTx.description,
+            recipientName: 'OPay Cardless ATM Terminal',
+            recipientAccount: `CODE-${code}`,
+            bankName: 'Quickteller / Interswitch ATM',
+            category: 'outflow',
+            reference: ref,
+          }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          if (soundEnabled) soundManager.playErrorSound();
+          throw new Error(errData.error || errData.message || 'ATM withdrawal failed.');
+        }
+
+        const data = await res.json();
+        if (typeof data.balanceNgn === 'number') {
+          newBalance = data.balanceNgn;
+        }
+        if (data.transaction) {
+          newTx = data.transaction;
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error) throw err;
+        throw new Error('Failed to process ATM withdrawal.');
+      }
+    }
+
+    setOpayBalance(newBalance);
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
@@ -2756,23 +2808,20 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Insufficient balance. Available: ${formatNgn(opayBalance)}`);
     }
 
-    const newBalance = opayBalance - amountNgn;
-    setOpayBalance(newBalance);
-
-    // Give 2% cashback points
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
     const cashbackEarned = amountNgn * 0.02;
-    setUserProfile(prev => ({
-      ...prev,
-      cashbackPointsNgn: prev.cashbackPointsNgn + cashbackEarned,
-    }));
 
-    const txId = `tx-svc-${Date.now()}`;
+    const title = `${providerName} ${serviceType === 'betting' ? 'Betting & Gaming Funding' : serviceType.toUpperCase()}`;
+    const description = `${packageDescription} for ${targetIdentifier}`;
+
+    let newBalance = opayBalance - amountNgn;
     let newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+      id: `tx-svc-${Date.now()}`,
+      reference: ref,
       type: serviceType,
-      title: `${providerName} ${serviceType === 'betting' ? 'Betting & Gaming Funding' : serviceType.toUpperCase()}`,
-      description: `${packageDescription} for ${targetIdentifier}`,
+      title,
+      description,
       amountNgn,
       status: 'successful',
       timestamp: Date.now(),
@@ -2793,7 +2842,6 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     };
 
     // Authoritatively record isolated transaction in persistent server database
-    const token = localStorage.getItem('opay_session_token');
     if (token) {
       try {
         const res = await fetch('/api/user/transactions/create', {
@@ -2811,30 +2859,59 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
             recipientAccount: targetIdentifier,
             bankName: providerName,
             category: 'outflow',
+            reference: ref,
           }),
         });
-        if (res.ok) {
-          const sData = await res.json();
-          if (sData.success && sData.transaction) {
-            newTx = sData.transaction;
-            if (typeof sData.balanceNgn === 'number') {
-              setOpayBalance(sData.balanceNgn);
-            }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          if (soundEnabled) soundManager.playErrorSound();
+          throw new Error(errData.error || errData.message || 'Payment failed.');
+        }
+
+        const sData = await res.json();
+        if (sData.success && sData.transaction) {
+          newTx = sData.transaction;
+          if (typeof sData.balanceNgn === 'number') {
+            newBalance = sData.balanceNgn;
           }
         }
-      } catch (err) {
-        console.warn('Quick recharge server record notice:', err);
+      } catch (err: unknown) {
+        if (err instanceof Error) throw err;
+        throw new Error('Service payment could not be processed.');
       }
     }
 
-    setTransactions(prev => [newTx, ...prev]);
+    setUserProfile(prev => ({
+      ...prev,
+      cashbackPointsNgn: (prev.cashbackPointsNgn || 0) + cashbackEarned,
+    }));
+    setOpayBalance(newBalance);
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
     const notif: DemoNotification = {
       id: `notif-svc-${Date.now()}`,
       title: `${providerName} Payment Successful`,
-      message: `You spent ${formatNgn(amountNgn)} on ${packageDescription} for ${targetIdentifier}. Earned ${formatNgn(cashbackEarned)} cashback!`,
+      message: `You spent ${formatNgn(amountNgn)} on ${packageDescription} for ${targetIdentifier}. Earned ${formatNgn(cashbackEarned)} cashback! New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'transaction',
@@ -2858,10 +2935,12 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
   }): Promise<Transaction> => {
     const { method, amountNgn, sourceDetails, reference } = params;
 
-    let newBalance = opayBalance + amountNgn;
-    setOpayBalance(newBalance);
+    if (amountNgn <= 0) {
+      throw new Error('Deposit amount must be greater than zero.');
+    }
 
     const txId = `tx-topup-${Date.now()}`;
+    const txRef = reference || generateReference();
     const methodNames: Record<string, string> = {
       bank_transfer: 'Bank Transfer Top-up',
       debit_card: 'Debit Card Instant Top-up',
@@ -2869,9 +2948,10 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       paystack: 'Paystack Instant Top-up',
     };
 
+    let newBalance = opayBalance + amountNgn;
     let newTx: Transaction = {
       id: txId,
-      reference: reference || generateReference(),
+      reference: txRef,
       type: 'deposit',
       title: methodNames[method] || 'Wallet Top-up',
       description: sourceDetails || `Top-up via ${methodNames[method] || 'Paystack'}`,
@@ -2894,7 +2974,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       sessionId: generateSessionId(),
     };
 
-    // Authoritatively record isolated deposit into persistent server database
+    // Authoritatively record isolated deposit into persistent server database first (Atomic)
     const token = localStorage.getItem('opay_session_token');
     if (token) {
       try {
@@ -2907,7 +2987,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
           body: JSON.stringify({
             amountNgn,
             method,
-            reference: newTx.reference,
+            reference: txRef,
             sourceDetails: newTx.description,
             title: newTx.title,
             description: newTx.description,
@@ -2917,18 +2997,40 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
           const depData = await depRes.json();
           if (depData.success) {
             newBalance = depData.balanceNgn;
-            setOpayBalance(newBalance);
             if (depData.transaction) {
               newTx = depData.transaction;
             }
           }
+        } else {
+          const errData = await depRes.json().catch(() => ({}));
+          throw new Error(errData.error || errData.message || 'Deposit failed on server.');
         }
       } catch (err) {
-        console.warn('Deposit server record notice:', err);
+        console.error('Deposit error:', err);
+        if (err instanceof Error) throw err;
+        throw new Error('Deposit failed.');
       }
     }
 
-    setTransactions(prev => [newTx, ...prev]);
+    setOpayBalance(newBalance);
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
@@ -2968,29 +3070,17 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Insufficient balance. Available: ${formatNgn(opayBalance)}`);
     }
 
-    const newBalance = opayBalance - amountNgn;
-    setOpayBalance(newBalance);
-    setUserProfile(prev => ({ ...prev, savingsBalanceNgn: prev.savingsBalanceNgn + amountNgn }));
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
+    const annualRate = durationDays >= 90 ? 22.0 : 18.0;
 
-    const newPlan: SafeBoxPlan = {
-      id: `plan-${Date.now()}`,
-      title,
-      principalNgn: amountNgn,
-      interestRateAnnual: durationDays >= 90 ? 22.0 : 18.0,
-      accruedInterestNgn: 0.00,
-      lockedUntil: Date.now() + 86400000 * durationDays,
-      autoRenew: false,
-    };
-
-    setSafeBoxes(prev => [newPlan, ...prev]);
-
-    const txId = `tx-sb-${Date.now()}`;
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance - amountNgn;
+    let newTx: Transaction = {
+      id: `tx-sb-${Date.now()}`,
+      reference: ref,
       type: 'safebox_deposit',
       title: `Locked into SafeBox: ${title}`,
-      description: `Locked for ${durationDays} days at ${newPlan.interestRateAnnual}% p.a.`,
+      description: `Locked for ${durationDays} days at ${annualRate}% p.a.`,
       amountNgn,
       status: 'successful',
       timestamp: Date.now(),
@@ -3001,7 +3091,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       recipient: {
         name: 'OPay SafeBox Vault',
-        accountOrPhone: newPlan.id,
+        accountOrPhone: `plan-${Date.now()}`,
         bankName: 'OPay SafeBox',
       },
       feeNgn: 0,
@@ -3010,18 +3100,76 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'safebox_deposit',
+            amountNgn,
+            title: newTx.title,
+            description: newTx.description,
+            recipientName: 'OPay SafeBox Vault',
+            category: 'outflow',
+            reference: ref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.balanceNgn === 'number') newBalance = data.balanceNgn;
+          if (data.transaction) newTx = data.transaction;
+        }
+      } catch (err) {
+        console.warn('SafeBox lock server notice:', err);
+      }
+    }
+
+    const newPlan: SafeBoxPlan = {
+      id: `plan-${Date.now()}`,
+      title,
+      principalNgn: amountNgn,
+      interestRateAnnual: annualRate,
+      accruedInterestNgn: 0.00,
+      lockedUntil: Date.now() + 86400000 * durationDays,
+      autoRenew: false,
+    };
+
+    setSafeBoxes(prev => [newPlan, ...prev]);
+    setOpayBalance(newBalance);
+    setUserProfile(prev => ({ ...prev, savingsBalanceNgn: (prev.savingsBalanceNgn || 0) + amountNgn }));
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            safeBoxes: [newPlan, ...(a.safeBoxes || [])],
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try { localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
     const notif: DemoNotification = {
       id: `notif-sb-${Date.now()}`,
       title: 'SafeBox Plan Created 🔒',
-      message: `You locked ${formatNgn(amountNgn)} in "${title}" for ${durationDays} days at ${newPlan.interestRateAnnual}% annual interest.`,
+      message: `You locked ${formatNgn(amountNgn)} in "${title}" for ${durationDays} days at ${annualRate}% annual interest. New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'promo',
       amountNgn,
+      status: 'successful',
     };
 
     setNotifications(prev => [notif, ...prev]);
@@ -3035,18 +3183,13 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!plan) return false;
 
     const totalReturn = plan.principalNgn + plan.accruedInterestNgn;
-    setOpayBalance(prev => prev + totalReturn);
-    setUserProfile(prev => ({
-      ...prev,
-      savingsBalanceNgn: Math.max(0, prev.savingsBalanceNgn - plan.principalNgn),
-    }));
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
 
-    setSafeBoxes(prev => prev.filter(p => p.id !== planId));
-
-    const txId = `tx-sbw-${Date.now()}`;
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance + totalReturn;
+    let newTx: Transaction = {
+      id: `tx-sbw-${Date.now()}`,
+      reference: ref,
       type: 'safebox_withdraw',
       title: `SafeBox Matured: ${plan.title}`,
       description: `Principal ${formatNgn(plan.principalNgn)} + Interest ${formatNgn(plan.accruedInterestNgn)} returned to wallet`,
@@ -3065,18 +3208,68 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0,
       category: 'inflow',
-      balanceAfterNgn: opayBalance + totalReturn,
+      balanceAfterNgn: newBalance,
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'safebox_withdraw',
+            amountNgn: totalReturn,
+            title: newTx.title,
+            description: newTx.description,
+            category: 'inflow',
+            reference: ref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.balanceNgn === 'number') newBalance = data.balanceNgn;
+          if (data.transaction) newTx = data.transaction;
+        }
+      } catch (err) {
+        console.warn('SafeBox withdraw server notice:', err);
+      }
+    }
+
+    const updatedPlans = safeBoxes.filter(p => p.id !== planId);
+    setSafeBoxes(updatedPlans);
+    setOpayBalance(newBalance);
+    setUserProfile(prev => ({
+      ...prev,
+      savingsBalanceNgn: Math.max(0, (prev.savingsBalanceNgn || 0) - plan.principalNgn),
+    }));
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            safeBoxes: updatedPlans,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try { localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
     const notif: DemoNotification = {
       id: `notif-sbw-${Date.now()}`,
       title: 'SafeBox Funds Credited to Wallet',
-      message: `+${formatNgn(totalReturn)} from "${plan.title}" has been transferred to your available balance.`,
+      message: `+${formatNgn(totalReturn)} from "${plan.title}" has been transferred to your available balance. New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'transaction',
@@ -3097,18 +3290,13 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Exceeds eligible limit of ${formatNgn(activeLoan.loanLimitNgn)}`);
     }
 
-    setOpayBalance(prev => prev + amountNgn);
-    setActiveLoan(prev => ({
-      ...prev,
-      currentBorrowedNgn: prev.currentBorrowedNgn + amountNgn,
-      status: 'active',
-      dueDate: Date.now() + 86400000 * 30,
-    }));
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
 
-    const txId = `tx-loan-${Date.now()}`;
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance + amountNgn;
+    let newTx: Transaction = {
+      id: `tx-loan-${Date.now()}`,
+      reference: ref,
       type: 'loan_disbursement',
       title: 'OKash Instant Loan Disbursement',
       description: `30-Day Instant Credit Facility`,
@@ -3127,18 +3315,67 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0,
       category: 'inflow',
-      balanceAfterNgn: opayBalance + amountNgn,
+      balanceAfterNgn: newBalance,
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'loan_disbursement',
+            amountNgn,
+            title: newTx.title,
+            description: newTx.description,
+            category: 'inflow',
+            reference: ref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.balanceNgn === 'number') newBalance = data.balanceNgn;
+          if (data.transaction) newTx = data.transaction;
+        }
+      } catch (err) {
+        console.warn('Loan request server notice:', err);
+      }
+    }
+
+    setOpayBalance(newBalance);
+    setActiveLoan(prev => ({
+      ...prev,
+      currentBorrowedNgn: (prev.currentBorrowedNgn || 0) + amountNgn,
+      status: 'active',
+      dueDate: Date.now() + 86400000 * 30,
+    }));
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try { localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
     const notif: DemoNotification = {
       id: `notif-loan-${Date.now()}`,
       title: 'Loan Disbursed Instantly 💳',
-      message: `+${formatNgn(amountNgn)} has been disbursed to your OPay wallet. Repayment due in 30 days.`,
+      message: `+${formatNgn(amountNgn)} has been disbursed to your OPay wallet. Repayment due in 30 days. New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'transaction',
@@ -3158,20 +3395,13 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       throw new Error(`Insufficient balance to repay loan.`);
     }
 
-    setOpayBalance(prev => prev - amountNgn);
-    setActiveLoan(prev => {
-      const remaining = Math.max(0, prev.currentBorrowedNgn - amountNgn);
-      return {
-        ...prev,
-        currentBorrowedNgn: remaining,
-        status: remaining === 0 ? 'cleared' : 'active',
-      };
-    });
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
 
-    const txId = `tx-repay-${Date.now()}`;
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance - amountNgn;
+    let newTx: Transaction = {
+      id: `tx-repay-${Date.now()}`,
+      reference: ref,
       type: 'loan_repayment',
       title: 'OKash Loan Repayment',
       description: `Repayment of outstanding credit balance`,
@@ -3190,18 +3420,69 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0,
       category: 'outflow',
-      balanceAfterNgn: opayBalance - amountNgn,
+      balanceAfterNgn: newBalance,
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'loan_repay',
+            amountNgn,
+            title: newTx.title,
+            description: newTx.description,
+            category: 'outflow',
+            reference: ref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.balanceNgn === 'number') newBalance = data.balanceNgn;
+          if (data.transaction) newTx = data.transaction;
+        }
+      } catch (err) {
+        console.warn('Loan repay server notice:', err);
+      }
+    }
+
+    setOpayBalance(newBalance);
+    setActiveLoan(prev => {
+      const remaining = Math.max(0, (prev.currentBorrowedNgn || 0) - amountNgn);
+      return {
+        ...prev,
+        currentBorrowedNgn: remaining,
+        status: remaining === 0 ? 'eligible' : 'active',
+      };
+    });
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try { localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
 
     const notif: DemoNotification = {
       id: `notif-repay-${Date.now()}`,
       title: 'Loan Repayment Confirmed ✅',
-      message: `You repaid ${formatNgn(amountNgn)} toward your OKash credit balance.`,
+      message: `You repaid ${formatNgn(amountNgn)} toward your OKash credit balance. New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'transaction',
@@ -3217,12 +3498,13 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // 8. Rewards
   const claimDailyReward = async (dayIndex: number, bonusNgn: number): Promise<boolean> => {
-    setOpayBalance(prev => prev + bonusNgn);
+    const token = localStorage.getItem('opay_session_token');
+    const ref = generateReference();
 
-    const txId = `tx-rew-${Date.now()}`;
-    const newTx: Transaction = {
-      id: txId,
-      reference: generateReference(),
+    let newBalance = opayBalance + bonusNgn;
+    let newTx: Transaction = {
+      id: `tx-rew-${Date.now()}`,
+      reference: ref,
       type: 'reward_bonus',
       title: `Daily Check-In Reward (Day ${dayIndex})`,
       description: 'Daily login bonus & reward scratch card claim',
@@ -3241,14 +3523,56 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
       },
       feeNgn: 0,
       category: 'inflow',
-      balanceAfterNgn: opayBalance + bonusNgn,
+      balanceAfterNgn: newBalance,
       sessionId: generateSessionId(),
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    if (token) {
+      try {
+        const res = await fetch('/api/user/transactions/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'reward_bonus',
+            amountNgn: bonusNgn,
+            title: newTx.title,
+            description: newTx.description,
+            category: 'inflow',
+            reference: ref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.balanceNgn === 'number') newBalance = data.balanceNgn;
+          if (data.transaction) newTx = data.transaction;
+        }
+      } catch (err) {
+        console.warn('Reward bonus server notice:', err);
+      }
+    }
+
+    setOpayBalance(newBalance);
+    setTransactions(prev => [newTx, ...prev.filter(t => t.id !== newTx.id)]);
+
+    setRegisteredAccounts(prev => {
+      const next = prev.map(a => {
+        if (a.id === currentAccountId) {
+          return {
+            ...a,
+            balanceNgn: newBalance,
+            transactions: [newTx, ...(a.transactions || []).filter(t => t.id !== newTx.id)],
+          };
+        }
+        return a;
+      });
+      try { localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     if (soundEnabled) soundManager.playSuccessSound();
-
     try {
       confetti({
         particleCount: 60,
@@ -3263,7 +3587,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     const notif: DemoNotification = {
       id: `notif-rew-${Date.now()}`,
       title: 'Daily Bonus Claimed! 🎁',
-      message: `+${formatNgn(bonusNgn)} has been added to your balance for Day ${dayIndex} check-in.`,
+      message: `+${formatNgn(bonusNgn)} has been added to your balance for Day ${dayIndex} check-in. New balance: ${formatNgn(newBalance)}.`,
       timestamp: Date.now(),
       read: false,
       type: 'promo',
@@ -3305,23 +3629,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const resetToDemoDefaults = () => {
-    setOpayBalance(40.86);
-    setIsBalanceHidden(false);
-    setUserProfile(DEFAULT_USER_PROFILE);
-    setCards(DEFAULT_CARDS);
-    setSafeBoxes(DEFAULT_SAFEBOXES);
-    setActiveLoan(DEFAULT_LOAN);
-    setTransactions(INITIAL_TRANSACTIONS);
-    setNotifications(generateSeedNotifications());
-    setActiveToast(null);
-    setRegisteredAccounts([DEFAULT_MASTER_ACCOUNT]);
-    setCurrentAccountId(DEFAULT_MASTER_ACCOUNT.id);
-    setIsAuthenticated(true);
-    setSmsLogs([]);
-    setLastSentSms(null);
-    localStorage.removeItem(ACCOUNTS_STORAGE_KEY);
-    localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
-    localStorage.removeItem(SMS_LOGS_STORAGE_KEY);
+    loadAccountsFromServer();
   };
 
   const unreadNotificationCount = notifications.filter(n => !n.read).length;

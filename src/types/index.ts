@@ -152,10 +152,21 @@ export interface SmsNotificationLog {
   reference: string;
 }
 
+export interface UserRecipientItem {
+  id: string;
+  name: string;
+  account: string;
+  bank: string;
+  bankCode?: string;
+  isOpay?: boolean;
+  lastUsedAt?: number;
+}
+
 export interface RegisteredUserAccount {
   id: string;
   fullName: string;
   phone: string;
+  normalizedPhone?: string; // Standard 10-digit subscriber or 11-digit national
   email: string;
   role?: 'owner' | 'admin' | 'user';
   ninMasked: string; // e.g. "•••••••4821" - never show raw NIN publicly
@@ -171,6 +182,8 @@ export interface RegisteredUserAccount {
   pinSalt?: string; // Cryptographic salt
   failedPinAttempts?: number;
   pinLockoutUntil?: number | null;
+  accountStatus?: 'active' | 'suspended';
+  lastLoginAt?: number;
   verificationStatus: VerificationStatus;
   verificationLog?: VerificationAuditLog;
   accountNumber: string;
@@ -182,6 +195,7 @@ export interface RegisteredUserAccount {
   safeBoxes: SafeBoxPlan[];
   activeLoan: ActiveLoan;
   notifications: DemoNotification[];
+  recentRecipients?: UserRecipientItem[];
 }
 
 export type MainTabType = 'home' | 'rewards' | 'finance' | 'cards' | 'me';

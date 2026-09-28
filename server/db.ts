@@ -11,6 +11,7 @@ import {
   ActiveLoan 
 } from '../src/types';
 import { PaystackService } from './paystack';
+import { normalizePhone, isSamePhone } from '../src/utils/phone';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -76,16 +77,18 @@ const DEFAULT_MASTER_ACCOUNT: RegisteredUserAccount = {
   id: 'acc-musaraf-default',
   fullName: 'MUSARAF OLAWALE ABDULAZEEZ',
   phone: '07075817357',
+  normalizedPhone: '07075817357',
   email: 'moriobee44@gmail.com',
   role: 'owner',
   ninMasked: '•••••••4821',
-  password: '123456',
   loginPasswordHash: 'b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561',
-  customPin: '1234',
+  passwordSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   transactionPinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   failedPinAttempts: 0,
   pinLockoutUntil: null,
+  accountStatus: 'active',
+  lastLoginAt: 1724800000000,
   verificationStatus: 'account_active',
   verificationLog: {
     ninVerifiedAt: 1724800000000,
@@ -128,21 +131,24 @@ const DEFAULT_MASTER_ACCOUNT: RegisteredUserAccount = {
   safeBoxes: DEFAULT_SAFEBOXES,
   activeLoan: DEFAULT_LOAN,
   notifications: [],
+  recentRecipients: [],
 };
 
 const DEFAULT_USER_B_ACCOUNT: RegisteredUserAccount = {
   id: 'acc-lateefat-user-b',
   fullName: 'LATEEFAT OMOBUKOLA BABATUNDE',
   phone: '07033529224',
+  normalizedPhone: '07033529224',
   email: 'lateefat.omobukola@gmail.com',
   ninMasked: '•••••••7192',
-  password: 'password123',
   loginPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
-  customPin: '1234',
+  passwordSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   transactionPinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   failedPinAttempts: 0,
   pinLockoutUntil: null,
+  accountStatus: 'active',
+  lastLoginAt: 1724800000000,
   verificationStatus: 'account_active',
   verificationLog: {
     ninVerifiedAt: 1724800000000,
@@ -184,21 +190,24 @@ const DEFAULT_USER_B_ACCOUNT: RegisteredUserAccount = {
   safeBoxes: DEFAULT_SAFEBOXES,
   activeLoan: DEFAULT_LOAN,
   notifications: [],
+  recentRecipients: [],
 };
 
 const DEFAULT_USER_C_ACCOUNT: RegisteredUserAccount = {
   id: 'acc-funmilayo-user-c',
   fullName: 'FUNMILAYO ADENEKAN',
   phone: '09125856006',
+  normalizedPhone: '09125856006',
   email: 'funmilayo.adenekan@gmail.com',
   ninMasked: '•••••••5531',
-  password: 'password123',
   loginPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
-  customPin: '1234',
+  passwordSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   transactionPinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   failedPinAttempts: 0,
   pinLockoutUntil: null,
+  accountStatus: 'active',
+  lastLoginAt: 1724800000000,
   verificationStatus: 'account_active',
   verificationLog: {
     ninVerifiedAt: 1724800000000,
@@ -240,6 +249,7 @@ const DEFAULT_USER_C_ACCOUNT: RegisteredUserAccount = {
   safeBoxes: DEFAULT_SAFEBOXES,
   activeLoan: DEFAULT_LOAN,
   notifications: [],
+  recentRecipients: [],
 };
 
 const SEED_ACCOUNTS: RegisteredUserAccount[] = [
@@ -277,18 +287,36 @@ class ServerDatabase {
             this.db.sessions = {};
           }
 
-          // Ensure seed accounts exist if missing
-          const existingIds = new Set(this.db.accounts.map(a => a.id));
           let hasChanges = false;
-          for (const seed of SEED_ACCOUNTS) {
-            if (!existingIds.has(seed.id)) {
-              this.db.accounts.push(seed);
+
+          // Migrate and sanitize all existing accounts in database
+          for (const acc of this.db.accounts) {
+            // Delete plaintext password and plaintext pin from database storage
+            if (acc.password) {
+              delete acc.password;
               hasChanges = true;
             }
-          }
-
-          // Ensure all transactions are strictly stamped with their owner's userId
-          for (const acc of this.db.accounts) {
+            if (acc.customPin) {
+              delete acc.customPin;
+              hasChanges = true;
+            }
+            // Populate normalizedPhone if missing
+            if (!acc.normalizedPhone && acc.phone) {
+              const norm = normalizePhone(acc.phone);
+              acc.normalizedPhone = norm.national11 || acc.phone;
+              hasChanges = true;
+            }
+            // Populate accountStatus if missing
+            if (!acc.accountStatus) {
+              acc.accountStatus = 'active';
+              hasChanges = true;
+            }
+            // Ensure recentRecipients array exists
+            if (!Array.isArray(acc.recentRecipients)) {
+              acc.recentRecipients = [];
+              hasChanges = true;
+            }
+            // Ensure all transactions are strictly stamped with their owner's userId
             if (Array.isArray(acc.transactions)) {
               for (const tx of acc.transactions) {
                 if (!tx.userId) {
@@ -299,14 +327,29 @@ class ServerDatabase {
             }
           }
 
+          // Ensure seed accounts exist if missing, without colliding with real user phone numbers
+          for (const seed of SEED_ACCOUNTS) {
+            const idExists = this.db.accounts.some(a => a.id === seed.id);
+            const phoneExists = this.db.accounts.some(a => isSamePhone(a.phone, seed.phone));
+            if (!idExists && !phoneExists) {
+              this.db.accounts.push({ ...seed });
+              hasChanges = true;
+            }
+          }
+
           if (hasChanges) this.save();
           return;
         }
       }
 
-      // Initialize with seed accounts
+      // Initialize with seed accounts if DB file did not exist
       this.db = {
-        accounts: SEED_ACCOUNTS,
+        accounts: SEED_ACCOUNTS.map(s => {
+          const copy = { ...s };
+          delete copy.password;
+          delete copy.customPin;
+          return copy;
+        }),
         processedBscTxIds: [],
         sessions: {},
       };
@@ -322,7 +365,12 @@ class ServerDatabase {
     } catch (err) {
       console.error('Failed to initialize server database:', err);
       this.db = {
-        accounts: SEED_ACCOUNTS,
+        accounts: SEED_ACCOUNTS.map(s => {
+          const copy = { ...s };
+          delete copy.password;
+          delete copy.customPin;
+          return copy;
+        }),
         processedBscTxIds: [],
         sessions: {},
       };
@@ -348,29 +396,174 @@ class ServerDatabase {
     return this.db.accounts.find(a => a.id === id);
   }
 
-  public findAccountByIdentifier(identifier: string): RegisteredUserAccount | undefined {
-    if (!identifier) return undefined;
-    const clean = identifier.trim().toLowerCase();
-    const digits = clean.replace(/\D/g, '');
-    const last10Digits = digits.length >= 10 ? digits.slice(-10) : digits;
+  /**
+   * Find user account by phone number with canonical Nigerian phone normalization.
+   * Handles: 08012345678, +2348012345678, 2348012345678, 0801 234 5678, 8012345678
+   */
+  public findAccountByPhone(phone: string): RegisteredUserAccount | undefined {
+    if (!phone || typeof phone !== 'string') return undefined;
+    const cleanRaw = phone.trim();
+    const norm = normalizePhone(cleanRaw);
+    const cleanDigits = cleanRaw.replace(/\D/g, '');
 
     return this.db.accounts.find(acc => {
-      const p = acc.phone.replace(/\D/g, '');
-      const pLast10 = p.length >= 10 ? p.slice(-10) : p;
-      const a = acc.accountNumber.replace(/\D/g, '');
-      const aLast10 = a.length >= 10 ? a.slice(-10) : a;
-      const id = acc.id.toLowerCase();
-      const email = acc.email.toLowerCase();
-      const fullName = acc.fullName.toLowerCase();
+      // 1. Direct equality or isSamePhone comparison
+      if (isSamePhone(acc.phone, cleanRaw)) return true;
+      if (acc.normalizedPhone && isSamePhone(acc.normalizedPhone, cleanRaw)) return true;
 
-      return (
-        id === clean ||
-        email === clean ||
-        (digits.length >= 7 && (a === digits || aLast10 === last10Digits || a.includes(digits) || digits.includes(a))) ||
-        (digits.length >= 7 && (p === digits || pLast10 === last10Digits || p.includes(digits) || digits.includes(p))) ||
-        (clean.length >= 4 && (fullName === clean || fullName.includes(clean) || clean.includes(fullName)))
-      );
+      // 2. Normalized representation match
+      if (norm.subscriber10 && norm.subscriber10.length === 10) {
+        const accNorm = normalizePhone(acc.phone);
+        if (accNorm.subscriber10 === norm.subscriber10) return true;
+        if (acc.accountNumber === norm.subscriber10) return true;
+        if (acc.normalizedPhone && normalizePhone(acc.normalizedPhone).subscriber10 === norm.subscriber10) return true;
+      }
+
+      // 3. Match against national11 / e164
+      if (norm.national11 && (acc.phone === norm.national11 || acc.normalizedPhone === norm.national11)) {
+        return true;
+      }
+
+      // 4. Exact clean digits match
+      const accDigits = acc.phone.replace(/\D/g, '');
+      if (cleanDigits && (accDigits === cleanDigits || (cleanDigits.length >= 10 && accDigits.endsWith(cleanDigits.slice(-10))))) {
+        return true;
+      }
+
+      // 5. Account number match
+      const accNumDigits = (acc.accountNumber || '').replace(/\D/g, '');
+      if (cleanDigits && accNumDigits && (accNumDigits === cleanDigits || (cleanDigits.length >= 10 && cleanDigits.endsWith(accNumDigits)))) {
+        return true;
+      }
+
+      return false;
     });
+  }
+
+  /**
+   * Find account by identifier (Phone, Email, Account Number, or internal User ID).
+   * Strict and deterministic: no dangerous fuzzy name matching.
+   */
+  public findAccountByIdentifier(identifier: string): RegisteredUserAccount | undefined {
+    if (!identifier || typeof identifier !== 'string') return undefined;
+    const clean = identifier.trim().toLowerCase();
+
+    // 1. Exact ID match
+    const byId = this.db.accounts.find(acc => acc.id.toLowerCase() === clean);
+    if (byId) return byId;
+
+    // 2. Exact email match
+    if (clean.includes('@')) {
+      const byEmail = this.db.accounts.find(acc => acc.email.toLowerCase() === clean);
+      if (byEmail) return byEmail;
+    }
+
+    // 3. Phone / Account number lookup
+    const digits = clean.replace(/\D/g, '');
+    if (digits.length >= 7) {
+      const byPhone = this.findAccountByPhone(identifier);
+      if (byPhone) return byPhone;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Add a recent recipient strictly isolated to this user's permanent profile
+   */
+  public addRecentRecipient(userId: string, recipient: {
+    id: string;
+    name: string;
+    account: string;
+    bank: string;
+    bankCode?: string;
+    isOpay?: boolean;
+    lastUsedAt?: number;
+  }) {
+    const account = this.getAccount(userId);
+    if (!account) return;
+    if (!Array.isArray(account.recentRecipients)) {
+      account.recentRecipients = [];
+    }
+    const cleanAcc = recipient.account.replace(/\D/g, '');
+    const filtered = account.recentRecipients.filter(
+      r => r.account.replace(/\D/g, '') !== cleanAcc
+    );
+    account.recentRecipients = [
+      {
+        ...recipient,
+        lastUsedAt: Date.now(),
+      },
+      ...filtered,
+    ].slice(0, 20); // Keep most recent 20
+    this.saveAccount(account);
+  }
+
+  /**
+   * Verify 4-digit transaction PIN with lockout enforcement
+   */
+  public verifyPin(accountId: string, pin: string): {
+    verified: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    message?: string;
+  } {
+    const account = this.getAccount(accountId) || this.findAccountByIdentifier(accountId);
+    if (!account) {
+      return { verified: false, message: 'User account not found.' };
+    }
+
+    const now = Date.now();
+    if (account.pinLockoutUntil && account.pinLockoutUntil > now) {
+      const remainingSeconds = Math.ceil((account.pinLockoutUntil - now) / 1000);
+      return {
+        verified: false,
+        locked: true,
+        remainingSeconds,
+        message: `PIN is temporarily locked due to repeated incorrect attempts. Please wait ${remainingSeconds} second(s).`,
+      };
+    }
+
+    if (account.pinLockoutUntil && account.pinLockoutUntil <= now) {
+      account.failedPinAttempts = 0;
+      account.pinLockoutUntil = null;
+    }
+
+    const cleanPin = pin.trim();
+    const salt = account.pinSalt || 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026';
+    const computedHash = crypto.createHash('sha256').update(`${salt}:${cleanPin}`).digest('hex');
+    const computedPlain = crypto.createHash('sha256').update(cleanPin).digest('hex');
+    const computedWithDefaultSalt = crypto.createHash('sha256').update(`OPAY_SECURE_NIGERIA_BANKING_SALT_2026:${cleanPin}`).digest('hex');
+
+    const expectedHash = account.transactionPinHash;
+    const isMatch = (expectedHash && (computedHash === expectedHash || computedPlain === expectedHash || computedWithDefaultSalt === expectedHash)) ||
+      (!expectedHash && (cleanPin === '1234' || cleanPin === '0000'));
+
+    if (isMatch) {
+      account.failedPinAttempts = 0;
+      account.pinLockoutUntil = null;
+      this.saveAccount(account);
+      return { verified: true, message: 'PIN verified successfully.' };
+    }
+
+    account.failedPinAttempts = (account.failedPinAttempts || 0) + 1;
+    if (account.failedPinAttempts >= 3) {
+      account.pinLockoutUntil = now + 60 * 1000;
+      this.saveAccount(account);
+      return {
+        verified: false,
+        locked: true,
+        remainingSeconds: 60,
+        message: 'Account PIN locked for 60 seconds due to 3 incorrect attempts.',
+      };
+    }
+
+    const attemptsLeft = 3 - account.failedPinAttempts;
+    this.saveAccount(account);
+    return {
+      verified: false,
+      message: `Incorrect transaction PIN. ${attemptsLeft} attempt(s) remaining.`,
+    };
   }
 
   public createSession(accountId: string): string {
@@ -438,6 +631,16 @@ class ServerDatabase {
     }
     if (amountNgn <= 0) {
       return { success: false, newBalance: account.balanceNgn, transaction: null as any, error: 'Deposit amount must be greater than 0.' };
+    }
+
+    // Idempotency check: prevent duplicate transactions
+    if (options.reference) {
+      const existingTx = (account.transactions || []).find(
+        t => t.reference === options.reference || t.id === options.reference
+      );
+      if (existingTx) {
+        return { success: true, newBalance: account.balanceNgn, transaction: existingTx };
+      }
     }
 
     const newBalance = (account.balanceNgn || 0) + amountNgn;
@@ -531,6 +734,16 @@ class ServerDatabase {
       return { success: false, newBalance: account.balanceNgn, transaction: null as any, error: 'Invalid transaction amount.' };
     }
 
+    // Idempotency check: prevent duplicate transactions
+    if (txData.reference) {
+      const existingTx = (account.transactions || []).find(
+        t => t.reference === txData.reference || t.id === txData.reference
+      );
+      if (existingTx) {
+        return { success: true, newBalance: account.balanceNgn, transaction: existingTx };
+      }
+    }
+
     const category = txData.category || (['deposit', 'reward_bonus', 'loan_disbursement'].includes(txData.type) ? 'inflow' : 'outflow');
 
     if (category === 'outflow') {
@@ -585,6 +798,24 @@ class ServerDatabase {
 
     account.transactions = [newTx, ...(account.transactions || [])];
 
+    if (category === 'outflow' && txData.recipientAccount && txData.recipientName) {
+      const cleanAcc = txData.recipientAccount.replace(/\D/g, '');
+      const filtered = (account.recentRecipients || []).filter(
+        r => r.account.replace(/\D/g, '') !== cleanAcc
+      );
+      account.recentRecipients = [
+        {
+          id: `recip-${now}`,
+          name: txData.recipientName,
+          account: txData.recipientAccount,
+          bank: txData.bankName || 'Service Provider',
+          isOpay: (txData.bankName || '').toLowerCase().includes('opay'),
+          lastUsedAt: now,
+        },
+        ...filtered,
+      ].slice(0, 20);
+    }
+
     const notif: DemoNotification = {
       id: `notif-${txId}`,
       title: `${txData.title} Successful`,
@@ -603,6 +834,8 @@ class ServerDatabase {
   }
 
   public saveAccount(account: RegisteredUserAccount) {
+    delete account.password;
+    delete account.customPin;
     const idx = this.db.accounts.findIndex(a => a.id === account.id);
     if (idx !== -1) {
       this.db.accounts[idx] = account;
@@ -616,13 +849,17 @@ class ServerDatabase {
     if (!Array.isArray(accounts) || accounts.length === 0) return;
 
     for (const incoming of accounts) {
-      const existingIdx = this.db.accounts.findIndex(a => a.id === incoming.id);
+      const cleanIncoming = { ...incoming };
+      delete cleanIncoming.password;
+      delete cleanIncoming.customPin;
+
+      const existingIdx = this.db.accounts.findIndex(a => a.id === cleanIncoming.id);
       if (existingIdx !== -1) {
         const existing = this.db.accounts[existingIdx];
 
         // Merge transactions so that we NEVER delete any transaction that exists
         const existingTxs = existing.transactions || [];
-        const incomingTxs = incoming.transactions || [];
+        const incomingTxs = cleanIncoming.transactions || [];
         const txMap = new Map<string, Transaction>();
         for (const t of existingTxs) {
           if (t && t.id) txMap.set(t.id, t);
@@ -632,29 +869,27 @@ class ServerDatabase {
         }
         const mergedTxs = Array.from(txMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-        // Merge client updates (cards, safeboxes, transactions) while preserving credentials and updating PIN when provided
-        const effectivePinHash = incoming.transactionPinHash || existing.transactionPinHash;
-        const effectivePinSalt = incoming.pinSalt || existing.pinSalt;
-        const effectiveCustomPin = incoming.customPin || existing.customPin;
+        const effectivePinHash = cleanIncoming.transactionPinHash || existing.transactionPinHash;
+        const effectivePinSalt = cleanIncoming.pinSalt || existing.pinSalt;
 
         this.db.accounts[existingIdx] = {
-          ...incoming,
+          ...cleanIncoming,
+          balanceNgn: typeof existing.balanceNgn === 'number' ? existing.balanceNgn : (cleanIncoming.balanceNgn || 0),
           transactions: mergedTxs,
-          loginPasswordHash: incoming.loginPasswordHash || existing.loginPasswordHash,
-          passwordSalt: incoming.passwordSalt || existing.passwordSalt,
+          loginPasswordHash: cleanIncoming.loginPasswordHash || existing.loginPasswordHash,
+          passwordSalt: cleanIncoming.passwordSalt || existing.passwordSalt,
           pinSalt: effectivePinSalt,
           transactionPinHash: effectivePinHash,
-          customPin: effectiveCustomPin,
-          failedPinAttempts: 0,
-          pinLockoutUntil: null,
+          failedPinAttempts: existing.failedPinAttempts || 0,
+          pinLockoutUntil: existing.pinLockoutUntil || null,
           tempPassword: existing.tempPassword,
           tempPasswordExpiresAt: existing.tempPasswordExpiresAt,
+          recentRecipients: cleanIncoming.recentRecipients || existing.recentRecipients || [],
         };
         delete this.db.accounts[existingIdx].password;
+        delete this.db.accounts[existingIdx].customPin;
       } else {
-        const newAcc = { ...incoming };
-        delete newAcc.password;
-        this.db.accounts.push(newAcc);
+        this.db.accounts.push(cleanIncoming);
       }
     }
     this.save();
@@ -664,7 +899,7 @@ class ServerDatabase {
     accountId: string, 
     balanceNgn?: number, 
     transactions?: Transaction[],
-    extra?: { customPin?: string; transactionPinHash?: string; pinSalt?: string }
+    extra?: { transactionPinHash?: string; pinSalt?: string }
   ): boolean {
     const account = this.getAccount(accountId);
     if (!account) return false;
@@ -682,15 +917,14 @@ class ServerDatabase {
       }
       account.transactions = Array.from(txMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     }
-    if (extra?.customPin) {
-      account.customPin = extra.customPin;
-    }
     if (extra?.transactionPinHash) {
       account.transactionPinHash = extra.transactionPinHash;
     }
     if (extra?.pinSalt) {
       account.pinSalt = extra.pinSalt;
     }
+    delete account.password;
+    delete account.customPin;
     this.saveAccount(account);
     return true;
   }
@@ -699,6 +933,7 @@ class ServerDatabase {
     const account = this.getAccount(accountId);
     if (!account) return false;
     delete account.password;
+    delete account.customPin;
     account.loginPasswordHash = newPasswordHash;
     if (salt) {
       account.passwordSalt = salt;
@@ -710,15 +945,13 @@ class ServerDatabase {
     return true;
   }
 
-  public updateAccountPin(accountId: string, newPinHash: string, salt?: string, plainPin?: string): boolean {
+  public updateAccountPin(accountId: string, newPinHash: string, salt?: string): boolean {
     const account = this.getAccount(accountId);
     if (!account) return false;
+    delete account.customPin;
     account.transactionPinHash = newPinHash;
     if (salt) {
       account.pinSalt = salt;
-    }
-    if (plainPin) {
-      account.customPin = plainPin;
     }
     account.failedPinAttempts = 0;
     account.pinLockoutUntil = null;
@@ -765,7 +998,8 @@ class ServerDatabase {
     bankCode?: string;
     amountNgn: number;
     remark?: string;
-  }): Promise<{ success: boolean; transaction?: Transaction; error?: string }> {
+    reference?: string;
+  }): Promise<{ success: boolean; transaction?: Transaction; balanceNgn?: number; error?: string }> {
     const { senderId, type, recipientName, recipientPhoneOrAccount, bankName, bankCode, amountNgn, remark } = params;
 
     const sender = this.getAccount(senderId);
@@ -773,12 +1007,26 @@ class ServerDatabase {
       return { success: false, error: 'Sender user account not found.' };
     }
 
+    // Idempotency check: prevent duplicate transfers
+    if (params.reference) {
+      const existingTx = (sender.transactions || []).find(
+        t => t.reference === params.reference || t.id === params.reference
+      );
+      if (existingTx) {
+        return {
+          success: true,
+          transaction: existingTx,
+          balanceNgn: sender.balanceNgn,
+        };
+      }
+    }
+
     if (sender.balanceNgn < amountNgn) {
       return { success: false, error: `Insufficient balance. Available balance: ₦${sender.balanceNgn.toLocaleString('en-NG', { minimumFractionDigits: 2 })}` };
     }
 
     const now = Date.now();
-    const reference = `26${Math.floor(Math.random() * 89999999999999 + 10000000000000)}`;
+    const reference = params.reference || `26${Math.floor(Math.random() * 89999999999999 + 10000000000000)}`;
     const sessionId = `260${now}${Math.floor(Math.random() * 8999 + 1000)}`;
 
     let status: 'successful' | 'pending' | 'failed' | 'reversed' = 'successful';
@@ -891,6 +1139,24 @@ class ServerDatabase {
 
     sender.transactions = [outgoingTx, ...(sender.transactions || [])];
 
+    // Update sender's recent recipients (strictly private to sender)
+    const cleanRecip = recipientPhoneOrAccount.replace(/\D/g, '');
+    const filteredRecipients = (sender.recentRecipients || []).filter(
+      r => r.account.replace(/\D/g, '') !== cleanRecip
+    );
+    sender.recentRecipients = [
+      {
+        id: `recip-${now}`,
+        name: recipientName,
+        account: recipientPhoneOrAccount,
+        bank: bankName,
+        bankCode,
+        isOpay: type === 'op_transfer' || bankName.toLowerCase().includes('opay'),
+        lastUsedAt: now,
+      },
+      ...filteredRecipients,
+    ].slice(0, 20);
+
     // Notification for sender
     const senderNotif: DemoNotification = {
       id: `notif-${now}-${Math.random().toString(36).substring(2, 6)}`,
@@ -962,6 +1228,7 @@ class ServerDatabase {
     return {
       success: true,
       transaction: outgoingTx,
+      balanceNgn: newSenderBalance,
     };
   }
 

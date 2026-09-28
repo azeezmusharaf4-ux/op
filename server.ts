@@ -6,6 +6,7 @@ import { PaystackService } from './server/paystack';
 import { serverDb } from './server/db';
 import { SmsService } from './server/sms';
 import type { RegisteredUserAccount } from './src/types';
+import { normalizePhone, isSamePhone } from './src/utils/phone';
 
 interface BankInfo {
   name: string;
@@ -619,15 +620,15 @@ async function startServer() {
       }
 
       const cleanInput = target.trim();
-      let account = serverDb.findAccountByIdentifier(cleanInput);
+      let account = serverDb.findAccountByPhone(cleanInput) || serverDb.findAccountByIdentifier(cleanInput);
       if (!account && strippedPhone) {
-        account = serverDb.findAccountByIdentifier(strippedPhone);
+        account = serverDb.findAccountByPhone(strippedPhone) || serverDb.findAccountByIdentifier(strippedPhone);
       }
       if (!account && internationalPhone) {
-        account = serverDb.findAccountByIdentifier(internationalPhone);
+        account = serverDb.findAccountByPhone(internationalPhone) || serverDb.findAccountByIdentifier(internationalPhone);
       }
       if (!account && rawPhone) {
-        account = serverDb.findAccountByIdentifier(rawPhone);
+        account = serverDb.findAccountByPhone(rawPhone) || serverDb.findAccountByIdentifier(rawPhone);
       }
 
       if (!account) {
@@ -676,7 +677,7 @@ async function startServer() {
       }
 
       const cleanInput = phone.trim();
-      const account = serverDb.findAccountByIdentifier(cleanInput);
+      const account = serverDb.findAccountByPhone(cleanInput) || serverDb.findAccountByIdentifier(cleanInput);
 
       if (!account) {
         res.status(404).json({
@@ -950,7 +951,7 @@ async function startServer() {
         account = serverDb.getAccount(accountId);
       }
       if (!account && phone) {
-        account = serverDb.findAccountByIdentifier(phone);
+        account = serverDb.findAccountByPhone(phone) || serverDb.findAccountByIdentifier(phone);
       }
 
       if (!account) {
@@ -1017,16 +1018,19 @@ async function startServer() {
 
       const cleanName = String(fullName).trim().toUpperCase();
       const cleanPhone = String(phone).trim();
+      const phoneNorm = normalizePhone(cleanPhone);
       const cleanEmail = email ? String(email).trim().toLowerCase() : '';
       const cleanPass = password ? String(password).trim() : '123456';
       const cleanPin = pin ? String(pin).trim() : '1234';
-      const derivedAccNum = accountNumber || cleanPhone.replace(/\D/g, '').slice(-10);
+      const derivedAccNum = accountNumber || phoneNorm.subscriber10 || cleanPhone.replace(/\D/g, '').slice(-10);
 
-      const existing = serverDb.findAccountByIdentifier(cleanPhone) || (cleanEmail ? serverDb.findAccountByIdentifier(cleanEmail) : undefined);
+      const existing = serverDb.findAccountByPhone(cleanPhone) || (cleanEmail ? serverDb.findAccountByIdentifier(cleanEmail) : undefined);
       if (existing) {
-        const sanitized = { ...existing };
-        delete sanitized.password;
-        res.json({ success: true, account: sanitized, message: 'Account already registered.' });
+        res.status(409).json({ 
+          success: false, 
+          error: 'This phone number is already registered. Please log in or use Forgot Password.',
+          alreadyRegistered: true,
+        });
         return;
       }
 
@@ -1040,17 +1044,18 @@ async function startServer() {
       const newAccount: RegisteredUserAccount = {
         id: `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         fullName: cleanName,
-        phone: cleanPhone,
-        email: cleanEmail || `${cleanPhone}@opay.ng`,
+        phone: phoneNorm.national11 || cleanPhone,
+        normalizedPhone: phoneNorm.national11 || cleanPhone,
+        email: cleanEmail || `${phoneNorm.national11 || cleanPhone}@opay.ng`,
         ninMasked: maskedNin,
-        password: cleanPass,
         loginPasswordHash: passwordHash,
         passwordSalt: salt,
-        customPin: cleanPin,
         transactionPinHash: pinHash,
         pinSalt: salt,
         failedPinAttempts: 0,
         pinLockoutUntil: null,
+        accountStatus: 'active',
+        lastLoginAt: Date.now(),
         verificationStatus: 'account_active',
         verificationLog: verificationLog || {
           ninVerifiedAt: Date.now(),
@@ -1067,7 +1072,7 @@ async function startServer() {
         userProfile: {
           name: firstName,
           fullName: cleanName,
-          phone: cleanPhone.startsWith('+') ? cleanPhone : `+234${cleanPhone.replace(/^0/, '')}`,
+          phone: phoneNorm.e164 || `+234${derivedAccNum}`,
           accountNumber: derivedAccNum,
           tier: 3,
           tierName: 'Tier 3',
@@ -1079,7 +1084,7 @@ async function startServer() {
           owealthBalanceNgn: 0,
           cashbackPointsNgn: 500,
           isKycVerified: true,
-          email: cleanEmail || `${cleanPhone}@opay.ng`,
+          email: cleanEmail || `${phoneNorm.national11 || cleanPhone}@opay.ng`,
           bvnLinked: true,
           ninLinked: true,
         },
@@ -1094,6 +1099,7 @@ async function startServer() {
           status: 'eligible',
         },
         notifications: [],
+        recentRecipients: [],
       };
 
       serverDb.saveAccount(newAccount);
@@ -1103,6 +1109,7 @@ async function startServer() {
 
       const sanitizedAccount = { ...newAccount };
       delete sanitizedAccount.password;
+      delete sanitizedAccount.customPin;
 
       res.json({
         success: true,
@@ -1130,7 +1137,7 @@ async function startServer() {
 
       const cleanId = identifier.trim();
       const cleanPass = password.trim();
-      const account = serverDb.findAccountByIdentifier(cleanId);
+      const account = serverDb.findAccountByPhone(cleanId) || serverDb.findAccountByIdentifier(cleanId);
 
       if (!account) {
         res.status(404).json({
@@ -1161,6 +1168,8 @@ async function startServer() {
       if (isPermanentMatch) {
         // Clear any temporary password flags without altering the user's permanent password!
         delete account.password;
+        delete account.customPin;
+        account.lastLoginAt = Date.now();
         account.mustResetPassword = false;
         account.tempPassword = undefined;
         account.tempPasswordExpiresAt = undefined;
@@ -1171,6 +1180,8 @@ async function startServer() {
 
         const sanitizedAccount = { ...account };
         delete sanitizedAccount.password;
+        delete sanitizedAccount.customPin;
+        sanitizedAccount.transactions = serverDb.getUserTransactions(account.id);
 
         res.json({
           success: true,
@@ -1203,13 +1214,17 @@ async function startServer() {
 
         const sessionToken = serverDb.createSession(account.id);
 
+        const sanitizedTempAccount = { ...account };
+        delete sanitizedTempAccount.password;
+        sanitizedTempAccount.transactions = serverDb.getUserTransactions(account.id);
+
         res.json({
           success: true,
           token: sessionToken,
           requiresPermanentPasswordReset: true,
           tempPasswordUsed: true,
           resetSessionToken,
-          account,
+          account: sanitizedTempAccount,
           message: 'Logged in with temporary password. Please create a new permanent password to secure your account.',
         });
         return;
@@ -1266,43 +1281,16 @@ async function startServer() {
 
       const { phone, accountNumber } = req.body;
       const account = serverDb.getAccount(accountId) || 
-                      (phone ? serverDb.findAccountByIdentifier(String(phone)) : undefined) ||
-                      (accountNumber ? serverDb.findAccountByIdentifier(String(accountNumber)) : undefined) ||
+                      (phone ? serverDb.findAccountByPhone(String(phone)) : undefined) ||
+                      (accountNumber ? serverDb.findAccountByPhone(String(accountNumber)) : undefined) ||
                       serverDb.findAccountByIdentifier(accountId);
-      const effectivePinHash = account?.transactionPinHash || expectedPinHash;
-      const effectiveSalt = account?.pinSalt || salt || HASH_SALT_DEFAULT;
 
-      // 1. Direct match with user's saved custom PIN (instant & 100% reliable)
-      let isMatch = false;
-      if (account?.customPin && cleanPin === account.customPin) {
-        isMatch = true;
-      }
+      const targetId = account ? account.id : accountId;
+      const verifyRes = serverDb.verifyPin(targetId, cleanPin);
 
-      // 2. Hash match using salt or default salt
-      if (!isMatch && effectivePinHash) {
-        const inputHash = computeHash(cleanPin, effectiveSalt);
-        const inputHashDefault = computeHash(cleanPin, HASH_SALT_DEFAULT);
-        const inputPlain = crypto.createHash('sha256').update(cleanPin).digest('hex');
-        if (inputHash === effectivePinHash || inputHashDefault === effectivePinHash || inputPlain === effectivePinHash) {
-          isMatch = true;
-        }
-      }
-
-      // 3. Fallback to default demo PIN (1234 or 0000) ONLY IF user has never set a custom PIN
-      if (!isMatch) {
-        const hasCustom = Boolean(account?.customPin);
-        const isDefaultSeed = !hasCustom && (!effectivePinHash || effectivePinHash === '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4');
-        if (isDefaultSeed && (cleanPin === '1234' || cleanPin === '0000')) {
-          isMatch = true;
-        }
-      }
-
-      if (isMatch) {
-        // Reset security state on success
+      if (verifyRes.verified) {
         pinSecurityMap.set(accountId, { attempts: 0, lockedUntil: null });
-        if (account) {
-          pinSecurityMap.set(account.id, { attempts: 0, lockedUntil: null });
-        }
+        pinSecurityMap.set(targetId, { attempts: 0, lockedUntil: null });
         res.json({
           success: true,
           verified: true,
@@ -1311,35 +1299,24 @@ async function startServer() {
         return;
       }
 
-      // Increment failed attempt counter
-      const newAttempts = userSecurity.attempts + 1;
-      const maxAttempts = 3;
-      const willLock = newAttempts >= maxAttempts;
-      const lockoutDurationMs = 60 * 1000; // 60 seconds lockout
-      const lockedUntil = willLock ? now + lockoutDurationMs : null;
-
-      pinSecurityMap.set(accountId, {
-        attempts: willLock ? 0 : newAttempts,
-        lockedUntil,
-      });
-
-      if (willLock) {
+      if (verifyRes.locked) {
         res.status(423).json({
           success: false,
           verified: false,
           locked: true,
-          remainingSeconds: 60,
-          message: '3 consecutive incorrect PIN attempts! Your transaction PIN is locked for 60 seconds for security.',
+          remainingSeconds: verifyRes.remainingSeconds || 60,
+          message: verifyRes.message || '3 consecutive incorrect PIN attempts! Your transaction PIN is locked for 60 seconds.',
         });
-      } else {
-        res.status(401).json({
-          success: false,
-          verified: false,
-          locked: false,
-          attemptsRemaining: maxAttempts - newAttempts,
-          message: `Incorrect transaction PIN. ${maxAttempts - newAttempts} attempt(s) remaining before security lockout.`,
-        });
+        return;
       }
+
+      res.status(401).json({
+        success: false,
+        verified: false,
+        locked: false,
+        message: verifyRes.message || 'Incorrect transaction PIN.',
+      });
+
     } catch (err: unknown) {
       console.error('Verify PIN error:', err);
       res.status(500).json({ success: false, message: 'Server error verifying PIN.' });
@@ -1375,7 +1352,7 @@ async function startServer() {
       const newSalt = `${Date.now()}_${Math.random().toString(36).substring(2)}`;
       const newPinHash = computeHash(cleanPin, newSalt);
 
-      const updated = serverDb.updateAccountPin(account.id, newPinHash, newSalt, cleanPin);
+      const updated = serverDb.updateAccountPin(account.id, newPinHash, newSalt);
       if (updated) {
         pinSecurityMap.set(account.id, { attempts: 0, lockedUntil: null });
         if (accountId) {
@@ -1724,6 +1701,17 @@ async function startServer() {
     });
   });
 
+  // GET /api/user/recipients - Fetch authenticated user's strictly private recipient history
+  app.get('/api/user/recipients', authenticateSession, (req, res) => {
+    const user = (req as any).user as RegisteredUserAccount;
+    const fresh = serverDb.getAccount(user.id) || user;
+    res.json({
+      success: true,
+      userId: user.id,
+      recipients: fresh.recentRecipients || [],
+    });
+  });
+
   // POST /api/user/transactions/deposit - Securely deposit/fund wallet permanently
   app.post('/api/user/transactions/deposit', authenticateSession, (req, res) => {
     try {
@@ -1760,7 +1748,7 @@ async function startServer() {
   app.post('/api/user/transactions/create', authenticateSession, (req, res) => {
     try {
       const user = (req as any).user as RegisteredUserAccount;
-      const { type, amountNgn, title, description, recipientName, recipientAccount, bankName, category, remark } = req.body;
+      const { type, amountNgn, title, description, recipientName, recipientAccount, bankName, category, remark, reference } = req.body;
       const numAmount = Number(amountNgn);
 
       if (!numAmount || numAmount <= 0) {
@@ -1786,6 +1774,7 @@ async function startServer() {
         recipientAccount: recipientAccount || '',
         bankName: bankName || 'OPay Merchant Gateway',
         category: category || 'outflow',
+        reference,
         remark,
       });
 
@@ -1846,6 +1835,7 @@ async function startServer() {
         id: a.id,
         fullName: a.fullName,
         phone: a.phone,
+        normalizedPhone: a.normalizedPhone || a.phone,
         accountNumber: a.accountNumber,
       }));
       res.json({ success: true, accounts: publicAccounts });
@@ -1946,7 +1936,7 @@ async function startServer() {
         accountId, 
         balanceNgn, 
         sanitizedTransactions, 
-        { customPin, transactionPinHash, pinSalt }
+        { transactionPinHash, pinSalt }
       );
       if (updated) {
         res.json({ success: true, message: 'Account updated permanently in server database.' });
@@ -1962,7 +1952,7 @@ async function startServer() {
   app.post('/api/transfers/send', async (req, res) => {
     try {
       const authUser = getAuthenticatedUser(req);
-      let { senderId, type, recipientName, recipientPhoneOrAccount, bankName, bankCode, amountNgn, remark } = req.body;
+      let { senderId, type, recipientName, recipientPhoneOrAccount, bankName, bankCode, amountNgn, remark, reference } = req.body;
 
       // If user is authenticated, force senderId to be their own account!
       if (authUser) {
@@ -1983,12 +1973,14 @@ async function startServer() {
         bankCode,
         amountNgn: Number(amountNgn),
         remark,
+        reference,
       });
 
       if (result.success) {
         res.json({
           success: true,
           transaction: result.transaction,
+          balanceNgn: result.balanceNgn,
           message: 'Transfer completed successfully and permanently saved to database.',
         });
       } else {

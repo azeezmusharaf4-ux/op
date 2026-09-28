@@ -7,7 +7,6 @@
       "email": "moriobee44@gmail.com",
       "ninMasked": "•••••••4821",
       "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
-      "customPin": "1234",
       "transactionPinHash": "bab1ca8bba9e8279a3f763e01b07aa8e6079b08c92701103f61099ef07592413",
       "pinSalt": "1788485341945_319ziuh0koa",
       "failedPinAttempts": 0,
@@ -79,7 +78,8 @@
             "NIBSS Instant Payment (NIP Interbank)",
             "Interswitch Central Switch",
             "CBN Settlement Router"
-          ]
+          ],
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-bank-1788393053647",
@@ -110,7 +110,8 @@
             "NIBSS Instant Payment (NIP Interbank)",
             "Interswitch Central Switch",
             "CBN Settlement Router"
-          ]
+          ],
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-svc-1788392875268",
@@ -134,7 +135,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 134000,
-          "sessionId": "100004178839287526879897861331"
+          "sessionId": "100004178839287526879897861331",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-sb-1788392873143",
@@ -158,7 +160,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 136000,
-          "sessionId": "100004178839287314383755343070"
+          "sessionId": "100004178839287314383755343070",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-sb-1788392872216",
@@ -182,7 +185,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 138000,
-          "sessionId": "100004178839287221662892961428"
+          "sessionId": "100004178839287221662892961428",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-sb-1788392855754",
@@ -206,7 +210,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 140000,
-          "sessionId": "100004178839285575486927440038"
+          "sessionId": "100004178839285575486927440038",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-sb-1788392853348",
@@ -230,7 +235,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 142000,
-          "sessionId": "100004178839285334833617794354"
+          "sessionId": "100004178839285334833617794354",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-owealth-1",
@@ -254,7 +260,8 @@
           "feeNgn": 0,
           "category": "inflow",
           "balanceAfterNgn": 40.86,
-          "sessionId": "260829013940182937102938"
+          "sessionId": "260829013940182937102938",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-stamp-duty-1",
@@ -278,7 +285,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 40.77,
-          "sessionId": "260828130921092837461928"
+          "sessionId": "260828130921092837461928",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-1",
@@ -302,7 +310,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 90.77,
-          "sessionId": "260828010100348299203012"
+          "sessionId": "260828010100348299203012",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-musaraf-1",
@@ -326,7 +335,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 11090.77,
-          "sessionId": "260828130732891726481029"
+          "sessionId": "260828130732891726481029",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-ussd-1",
@@ -350,7 +360,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 11290.77,
-          "sessionId": "260828130641928374619283"
+          "sessionId": "260828130641928374619283",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-sherifat-1",
@@ -374,7 +385,8 @@
           "feeNgn": 0,
           "category": "inflow",
           "balanceAfterNgn": 11300.77,
-          "sessionId": "260828130613098273645192"
+          "sessionId": "260828130613098273645192",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-owealth-2",
@@ -398,7 +410,8 @@
           "feeNgn": 0,
           "category": "inflow",
           "balanceAfterNgn": 0.77,
-          "sessionId": "260828033814892716354891"
+          "sessionId": "260828033814892716354891",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-musaraf-2",
@@ -422,7 +435,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 0.68,
-          "sessionId": "260827124700982736451029"
+          "sessionId": "260827124700982736451029",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-lateefat-1",
@@ -446,7 +460,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 130.68,
-          "sessionId": "260827093907892736451920"
+          "sessionId": "260827093907892736451920",
+          "userId": "acc-musaraf-default"
         },
         {
           "id": "tx-seed-transfer-musaraf-3",
@@ -470,7 +485,8 @@
           "feeNgn": 0,
           "category": "outflow",
           "balanceAfterNgn": 930.68,
-          "sessionId": "260827084918892736451029"
+          "sessionId": "260827084918892736451029",
+          "userId": "acc-musaraf-default"
         }
       ],
       "cards": [
@@ -608,7 +624,10 @@
       ],
       "role": "owner",
       "passwordSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
-      "mustResetPassword": false
+      "mustResetPassword": false,
+      "normalizedPhone": "07075817357",
+      "accountStatus": "active",
+      "recentRecipients": []
     },
     {
       "id": "acc-lateefat-user-b",
@@ -617,7 +636,6 @@
       "email": "lateefat.omobukola@gmail.com",
       "ninMasked": "•••••••7192",
       "loginPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
-      "customPin": "1234",
       "transactionPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
       "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
@@ -647,7 +665,7 @@
         "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80",
         "todaySalesNgn": 0,
         "savingsBalanceNgn": 15000,
-        "owealthBalanceNgn": 25450,
+        "owealthBalanceNgn": 26950,
         "cashbackPointsNgn": 120,
         "isKycVerified": true,
         "email": "lateefat.omobukola@gmail.com",
@@ -681,7 +699,8 @@
           "feeNgn": 0,
           "category": "inflow",
           "balanceAfterNgn": 25450,
-          "sessionId": "260826142011009827364512"
+          "sessionId": "260826142011009827364512",
+          "userId": "acc-lateefat-user-b"
         }
       ],
       "cards": [
@@ -732,7 +751,22 @@
         "dailyInterestPercent": 0.1,
         "status": "eligible"
       },
-      "notifications": []
+      "notifications": [
+        {
+          "id": "notif-inflow-1790607652780-tddn",
+          "title": "Transaction Successful",
+          "message": "You have received ₦1,500.00.",
+          "timestamp": 1790607652780,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-inflow-1790607652780-dpja",
+          "amountNgn": 1500,
+          "status": "successful"
+        }
+      ],
+      "normalizedPhone": "07033529224",
+      "accountStatus": "active",
+      "recentRecipients": []
     },
     {
       "id": "acc-funmilayo-user-c",
@@ -741,7 +775,6 @@
       "email": "funmilayo.adenekan@gmail.com",
       "ninMasked": "•••••••5531",
       "loginPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
-      "customPin": "1234",
       "transactionPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
       "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
@@ -805,7 +838,8 @@
           "feeNgn": 0,
           "category": "inflow",
           "balanceAfterNgn": 18200,
-          "sessionId": "260826142011009827364999"
+          "sessionId": "260826142011009827364999",
+          "userId": "acc-funmilayo-user-c"
         }
       ],
       "cards": [
@@ -856,8 +890,29 @@
         "dailyInterestPercent": 0.1,
         "status": "eligible"
       },
-      "notifications": []
+      "notifications": [],
+      "normalizedPhone": "09125856006",
+      "accountStatus": "active",
+      "recentRecipients": []
     }
   ],
-  "processedBscTxIds": []
+  "processedBscTxIds": [],
+  "sessions": {
+    "d3bc4b25cf1667cc7d3152bfb132da0e4c6c65f6c0f099f1c5118e6f61585149": {
+      "accountId": "acc-1790607640937-hqu5",
+      "createdAt": 1790607640938
+    },
+    "07429fce29dd0ea740054187fe0bd155e43186b774ac0206e1396010564246cd": {
+      "accountId": "acc-1790607640937-hqu5",
+      "createdAt": 1790607640964
+    },
+    "780fc0e3f729f5c41386938fc3528db814ae2c3eab95f16730cb6ba14ff8f700": {
+      "accountId": "acc-1790607640937-hqu5",
+      "createdAt": 1790607642743
+    },
+    "ed1679c587a185fab4b62cbd6b9462b28a328f7fcb71a8f2477135d57882a038": {
+      "accountId": "acc-1790607640937-hqu5",
+      "createdAt": 1790607652765
+    }
+  }
 }

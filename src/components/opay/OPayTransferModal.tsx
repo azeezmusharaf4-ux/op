@@ -159,7 +159,16 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
   onClose,
   onOpenHistory,
 }) => {
-  const { opayBalance, userProfile, registeredAccounts, sendBankTransfer, sendOpayTransfer, verifyTransactionPin } = useDemoWallet();
+  const { 
+    opayBalance, 
+    userProfile, 
+    registeredAccounts, 
+    currentUser, 
+    transactions, 
+    sendBankTransfer, 
+    sendOpayTransfer, 
+    verifyTransactionPin 
+  } = useDemoWallet();
 
   // Mode: 'op_transfer' vs 'bank_transfer'
   const [transferMode] = useState<'op_transfer' | 'bank_transfer'>(initialType);
@@ -465,19 +474,66 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
     b.code.includes(bankSearchQuery)
   );
 
-  const displayedBeneficiaries = RECENT_BENEFICIARIES.filter(b => {
-    if (transferMode === 'op_transfer') {
-      return b.isOpay;
+  // User's strictly private recipients: from account profile recentRecipients and user's past transfer transactions
+  const userRecipients = React.useMemo(() => {
+    const list: RecentBeneficiary[] = [];
+    const seenAccounts = new Set<string>();
+
+    if (currentUser?.recentRecipients && Array.isArray(currentUser.recentRecipients)) {
+      for (const r of currentUser.recentRecipients) {
+        const clean = r.account.replace(/\D/g, '');
+        if (clean && !seenAccounts.has(clean)) {
+          seenAccounts.add(clean);
+          list.push({
+            id: r.id || `recip-${clean}`,
+            name: r.name,
+            account: r.account,
+            bank: r.bank || (r.isOpay ? 'OPay (Paycom)' : 'Commercial Bank'),
+            bankCode: r.bankCode || (r.isOpay ? '999992' : '058'),
+            isOpay: Boolean(r.isOpay || (r.bank && r.bank.toLowerCase().includes('opay'))),
+          });
+        }
+      }
     }
-    if (activeTab === 'favourites') {
-      return b.id === '1' || b.id === '2';
+
+    if (Array.isArray(transactions)) {
+      for (const tx of transactions) {
+        if (tx.category === 'outflow' && (tx.type === 'op_transfer' || tx.type === 'bank_transfer')) {
+          const accOrPhone = (tx.recipient?.accountOrPhone || '').replace(/\D/g, '');
+          if (accOrPhone && !seenAccounts.has(accOrPhone)) {
+            seenAccounts.add(accOrPhone);
+            const isOpay = tx.type === 'op_transfer' || (tx.recipient?.bankName || '').toLowerCase().includes('opay');
+            list.push({
+              id: `tx-recip-${tx.id}`,
+              name: tx.recipient?.name || 'Beneficiary',
+              account: tx.recipient?.accountOrPhone || accOrPhone,
+              bank: tx.recipient?.bankName || (isOpay ? 'OPay (Paycom)' : 'Other Bank'),
+              bankCode: isOpay ? '999992' : '058',
+              isOpay,
+            });
+          }
+        }
+      }
     }
-    if (!searchBeneficiaryTerm) return true;
-    return (
-      b.name.toLowerCase().includes(searchBeneficiaryTerm.toLowerCase()) ||
-      b.account.includes(searchBeneficiaryTerm)
-    );
-  });
+
+    return list;
+  }, [currentUser, transactions]);
+
+  const displayedBeneficiaries = React.useMemo(() => {
+    return userRecipients.filter(b => {
+      if (transferMode === 'op_transfer') {
+        return b.isOpay;
+      }
+      if (activeTab === 'favourites') {
+        return false;
+      }
+      if (!searchBeneficiaryTerm) return true;
+      return (
+        b.name.toLowerCase().includes(searchBeneficiaryTerm.toLowerCase()) ||
+        b.account.includes(searchBeneficiaryTerm)
+      );
+    });
+  }, [userRecipients, transferMode, activeTab, searchBeneficiaryTerm]);
 
   return (
     <div 
@@ -874,83 +930,73 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
               </button>
             </div>
 
-            {/* List matching contacts from screenshots */}
-            <div className="divide-y divide-slate-800/60">
-              {[
-                {
-                  id: 'op1',
-                  name: 'FUNMILAYO ADENEKAN',
-                  phone: '912 585 6006',
-                  rawAcc: '9125856006',
-                  badge: 'V3 BizPayment',
-                  avatarBg: 'bg-gradient-to-br from-pink-500 to-rose-600',
-                  initials: 'FA',
-                },
-                {
-                  id: 'op2',
-                  name: 'LATEEFAT OMOBUKOLA BABATUNDE',
-                  phone: '703 352 9224',
-                  rawAcc: '7033529224',
-                  badge: 'V3 BizPayment',
-                  avatarBg: 'bg-slate-700',
-                  initials: 'LO',
-                },
-                {
-                  id: 'op3',
-                  name: 'LUKMAN AREMU ABUBAKAR',
-                  phone: '654 266 5743',
-                  rawAcc: '6542665743',
-                  badge: 'V2 BizPayment',
-                  avatarBg: 'bg-slate-700',
-                  initials: 'LA',
-                },
-              ].map((contact) => (
-                <div
-                  key={contact.id}
-                  onClick={() => {
-                    setSelectedBank('OPay (Paycom)');
-                    setSelectedBankCode('999992');
-                    setAccountNumber(contact.rawAcc);
-                    setRecipientName(contact.name);
-                    setError(null);
-                    setResolutionError(null);
-                    setShowAmountStep(true);
-                  }}
-                  className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[#1F232C]/60 px-1 rounded-xl transition-colors group"
-                >
-                  {/* Avatar with V3/V2 BizPayment badge */}
-                  <div className="relative shrink-0">
-                    <div className={`flex h-11 w-11 items-center justify-center rounded-full text-white font-bold text-xs shadow-md ${contact.avatarBg}`}>
-                      {contact.initials}
-                    </div>
-                    <span className="absolute -bottom-1 -left-1 rounded-full bg-[#00D589] px-1 py-0.2 text-[7.5px] font-black text-[#072418] border border-[#181B22] shadow-sm">
-                      {contact.badge}
-                    </span>
-                  </div>
+            {/* List private recent OPay contacts for current user */}
+            {displayedBeneficiaries.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <Users className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+                <p className="font-semibold text-slate-300">No recent recipients</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Recipients you transfer to will appear here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/60">
+                {displayedBeneficiaries.map((contact) => {
+                  const initials = contact.name
+                    .split(' ')
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map(n => n[0])
+                    .join('')
+                    .toUpperCase() || 'OP';
+                  return (
+                    <div
+                      key={contact.id}
+                      onClick={() => {
+                        setSelectedBank('OPay (Paycom)');
+                        setSelectedBankCode('999992');
+                        setAccountNumber(contact.account);
+                        setRecipientName(contact.name);
+                        setError(null);
+                        setResolutionError(null);
+                        setShowAmountStep(true);
+                      }}
+                      className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[#1F232C]/60 px-1 rounded-xl transition-colors group"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full text-white font-bold text-xs shadow-md bg-gradient-to-br from-emerald-600 to-teal-700">
+                          {initials}
+                        </div>
+                        <span className="absolute -bottom-1 -left-1 rounded-full bg-[#00D589] px-1 py-0.2 text-[7.5px] font-black text-[#072418] border border-[#181B22] shadow-sm">
+                          Verified
+                        </span>
+                      </div>
 
-                  <div className="space-y-0.5 min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-[13px] font-bold text-white uppercase group-hover:text-[#00D589] transition-colors truncate">
-                      {contact.name}
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-mono tracking-wider">
-                      {contact.phone}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      <div className="space-y-0.5 min-w-0 flex-1">
+                        <h3 className="text-xs sm:text-[13px] font-bold text-white uppercase group-hover:text-[#00D589] transition-colors truncate">
+                          {contact.name}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 font-mono tracking-wider">
+                          {formatAccountNumberDisplay(contact.account)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* View All Pill */}
-            <div className="pt-1 flex justify-center">
-              <button
-                type="button"
-                onClick={() => showToast('Viewing all recent OPay accounts')}
-                className="inline-flex items-center gap-1 rounded-full bg-[#232730] px-4 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
-              >
-                <span>View All</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {displayedBeneficiaries.length > 0 && (
+              <div className="pt-1 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => showToast('Viewing all recent OPay accounts')}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#232730] px-4 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  <span>View All</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 5. Contact Sync Strip Card matching IMG_2474.png */}
@@ -1204,48 +1250,58 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
               </div>
             )}
 
-            <div className="divide-y divide-slate-800/60">
-              {displayedBeneficiaries.map((b) => (
-                <div
-                  key={b.id}
-                  onClick={() => handleSelectBeneficiary(b)}
-                  className="flex items-center justify-between py-3 cursor-pointer hover:bg-[#1F232C]/60 px-1 rounded-xl transition-colors group"
-                >
-                  <div className="space-y-0.5">
-                    <h3 className="text-xs sm:text-[13px] font-bold text-white uppercase group-hover:text-emerald-400 transition-colors">
-                      {b.name}
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      <span>{b.account}</span>{' '}
-                      <span className="text-slate-300 font-sans">{b.bank}</span>
-                    </p>
+            {displayedBeneficiaries.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <Users className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+                <p className="font-semibold text-slate-300">No recent beneficiaries</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Recipients you transfer to will appear here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/60">
+                {displayedBeneficiaries.map((b) => (
+                  <div
+                    key={b.id}
+                    onClick={() => handleSelectBeneficiary(b)}
+                    className="flex items-center justify-between py-3 cursor-pointer hover:bg-[#1F232C]/60 px-1 rounded-xl transition-colors group"
+                  >
+                    <div className="space-y-0.5">
+                      <h3 className="text-xs sm:text-[13px] font-bold text-white uppercase group-hover:text-emerald-400 transition-colors">
+                        {b.name}
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        <span>{b.account}</span>{' '}
+                        <span className="text-slate-300 font-sans">{b.bank}</span>
+                      </p>
+                    </div>
+
+                    {b.isOpay ? (
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm shrink-0">
+                        <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none">
+                          <circle cx="50" cy="50" r="34" stroke="#00B67A" strokeWidth="16" />
+                          <rect x="12" y="44.5" width="24" height="11" rx="2" fill="#22004B" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#113B2C] text-[#00D589] shrink-0 border border-emerald-500/20">
+                        <Landmark className="h-4 w-4" />
+                      </div>
+                    )}
                   </div>
+                ))}
+              </div>
+            )}
 
-                  {b.isOpay ? (
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm shrink-0">
-                      <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none">
-                        <circle cx="50" cy="50" r="34" stroke="#00B67A" strokeWidth="16" />
-                        <rect x="12" y="44.5" width="24" height="11" rx="2" fill="#22004B" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#113B2C] text-[#00D589] shrink-0 border border-emerald-500/20">
-                      <Landmark className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-2 flex justify-center">
-              <button
-                onClick={() => showToast('All registered beneficiaries displayed')}
-                className="inline-flex items-center gap-1 rounded-full bg-[#21252E] px-4 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
-              >
-                <span>View All</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {displayedBeneficiaries.length > 0 && (
+              <div className="pt-2 flex justify-center">
+                <button
+                  onClick={() => showToast('All registered beneficiaries displayed')}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#21252E] px-4 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  <span>View All</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Card 4: More Events */}
