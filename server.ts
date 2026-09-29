@@ -565,6 +565,44 @@ async function startServer() {
     });
   });
 
+  // =========================================================================
+  // AUTHENTICATION & ROLE-BASED ACCESS CONTROL HELPERS
+  // =========================================================================
+  const isOwnerAdminAccount = (identifier?: string, phone?: string, email?: string, name?: string): boolean => {
+    const cleanId = (identifier || '').trim().toLowerCase();
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim().toUpperCase();
+
+    const isMasterId = cleanId === 'acc-musaraf-default' || cleanId.includes('musaraf');
+    const isMasterPhone = cleanPhone.endsWith('7075817357') || cleanPhone.endsWith('8104443906');
+    const isMasterEmail = cleanEmail === 'moriobee44@gmail.com' || cleanEmail.includes('musaraf');
+    const isMasterName = cleanName.includes('MUSARAF') && (cleanName.includes('ABDULAZ') || cleanName.includes('OLAWALE'));
+
+    return Boolean(isMasterId || isMasterPhone || isMasterEmail || isMasterName);
+  };
+
+  const getAuthenticatedUser = (req: express.Request): RegisteredUserAccount | null => {
+    const authHeader = req.headers['authorization'] || '';
+    const tokenHeader = req.headers['x-session-token'] || '';
+    let token = '';
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (typeof tokenHeader === 'string') {
+      token = tokenHeader.trim();
+    } else if (req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token.trim();
+    } else if (req.body && typeof req.body === 'object') {
+      if (req.body.adminToken && typeof req.body.adminToken === 'string') {
+        token = req.body.adminToken.trim();
+      } else if (req.body.token && typeof req.body.token === 'string') {
+        token = req.body.token.trim();
+      }
+    }
+    if (!token) return null;
+    return serverDb.getSessionAccount(token) || null;
+  };
+
   // 8. POST /api/auth/hash-credentials - Secure server-side credential hashing
   app.post('/api/auth/hash-credentials', (req, res) => {
     try {
@@ -621,21 +659,27 @@ async function startServer() {
 
       const cleanInput = target.trim();
       let account = serverDb.findAccountByPhone(cleanInput) || serverDb.findAccountByIdentifier(cleanInput);
-      if (!account && strippedPhone) {
-        account = serverDb.findAccountByPhone(strippedPhone) || serverDb.findAccountByIdentifier(strippedPhone);
-      }
-      if (!account && internationalPhone) {
-        account = serverDb.findAccountByPhone(internationalPhone) || serverDb.findAccountByIdentifier(internationalPhone);
-      }
-      if (!account && rawPhone) {
-        account = serverDb.findAccountByPhone(rawPhone) || serverDb.findAccountByIdentifier(rawPhone);
+      if (!account) {
+        for (const candidate of [phone, rawPhone, strippedPhone, internationalPhone]) {
+          if (candidate && typeof candidate === 'string') {
+            account = serverDb.findAccountByPhone(candidate.trim()) || serverDb.findAccountByIdentifier(candidate.trim());
+            if (account) break;
+            const norm = normalizePhone(candidate.trim());
+            if (norm.isValid || norm.subscriber10) {
+              account = serverDb.findAccountByPhone(norm.national11) ||
+                        serverDb.findAccountByPhone(norm.subscriber10) ||
+                        serverDb.findAccountByPhone(norm.e164);
+              if (account) break;
+            }
+          }
+        }
       }
 
       if (!account) {
         res.status(404).json({
           success: false,
           exists: false,
-          message: 'No account found matching this phone number. Please check the number and try again.',
+          message: 'No registered account was found for this phone number. Please contact the owner.',
         });
         return;
       }
@@ -660,6 +704,7 @@ async function startServer() {
     }
   };
 
+  app.post('/api/auth/check-phone', handleCheckPhone);
   app.post('/api/auth/forgot-password/check-phone', handleCheckPhone);
   app.post('/api/auth/forgot-password/verify-phone', handleCheckPhone);
 
@@ -677,7 +722,15 @@ async function startServer() {
       }
 
       const cleanInput = phone.trim();
-      const account = serverDb.findAccountByPhone(cleanInput) || serverDb.findAccountByIdentifier(cleanInput);
+      let account = serverDb.findAccountByPhone(cleanInput) || serverDb.findAccountByIdentifier(cleanInput);
+      if (!account) {
+        const norm = normalizePhone(cleanInput);
+        if (norm.isValid || norm.subscriber10) {
+          account = serverDb.findAccountByPhone(norm.national11) ||
+                    serverDb.findAccountByPhone(norm.subscriber10) ||
+                    serverDb.findAccountByPhone(norm.e164);
+        }
+      }
 
       if (!account) {
         res.status(404).json({
@@ -951,7 +1004,16 @@ async function startServer() {
         account = serverDb.getAccount(accountId);
       }
       if (!account && phone) {
-        account = serverDb.findAccountByPhone(phone) || serverDb.findAccountByIdentifier(phone);
+        const cleanPhoneStr = String(phone).trim();
+        account = serverDb.findAccountByPhone(cleanPhoneStr) || serverDb.findAccountByIdentifier(cleanPhoneStr);
+        if (!account) {
+          const norm = normalizePhone(cleanPhoneStr);
+          if (norm.isValid || norm.subscriber10) {
+            account = serverDb.findAccountByPhone(norm.national11) ||
+                      serverDb.findAccountByPhone(norm.subscriber10) ||
+                      serverDb.findAccountByPhone(norm.e164);
+          }
+        }
       }
 
       if (!account) {
@@ -968,10 +1030,23 @@ async function startServer() {
       // Permanently update account password on server
       serverDb.updateAccountPassword(account.id, newHash, salt);
 
+      // Invalidate existing sessions so that new password authentication is required
+      serverDb.invalidateAccountSessions(account.id);
+
       // Clean up temporary password stores
       const cleanDigits = account.phone.replace(/\D/g, '');
       temporaryPasswordStore.delete(cleanDigits);
       forgotPasswordOtpStore.delete(cleanDigits);
+
+      // Verify that the new credential is stored correctly in the authoritative user record
+      const verifiedAccount = serverDb.getAccount(account.id);
+      if (!verifiedAccount || verifiedAccount.loginPasswordHash !== newHash) {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to permanently store new credential. Please try again.',
+        });
+        return;
+      }
 
       // Send confirmation SMS alert
       try {
@@ -981,7 +1056,7 @@ async function startServer() {
         console.warn('Confirmation SMS alert warning:', smsErr);
       }
 
-      const updatedAccount = serverDb.getAccount(account.id) || account;
+      const updatedAccount = verifiedAccount;
       const sanitizedAccount = { ...updatedAccount };
       delete sanitizedAccount.password;
 
@@ -1007,46 +1082,89 @@ async function startServer() {
   app.post('/api/auth/set-permanent-password', handleSetPermanentPassword);
   app.post('/api/auth/forgot-password/reset-password', handleSetPermanentPassword);
 
-  // 8E. POST /api/auth/register - Register new user account directly on server database
-  app.post('/api/auth/register', (req, res) => {
+  // 8E. POST /api/admin/register-user - Owner-only user registration with permanent database persistence
+  const handleOwnerRegisterUser = (req: express.Request, res: express.Response) => {
     try {
-      const { fullName, phone, email, nin, password, pin, verificationLog, accountNumber, balanceNgn } = req.body;
-      if (!fullName || !phone) {
-        res.status(400).json({ success: false, message: 'Full name and phone number are required.' });
+      const authUser = getAuthenticatedUser(req);
+      const isOwner = authUser && isOwnerAdminAccount(authUser.id, authUser.phone, authUser.email, authUser.fullName);
+
+      if (!authUser || !isOwner) {
+        console.warn(`[SECURITY] Unauthorized attempt to register user by: ${authUser ? authUser.id : 'Anonymous'}`);
+        res.status(403).json({
+          success: false,
+          message: 'Access Restricted: Only the website owner/admin can create or register new accounts.',
+        });
+        return;
+      }
+
+      const { fullName, phone, email, nin, password, pin, initialBalance } = req.body;
+      if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
+        res.status(400).json({ success: false, message: 'Full name is required.' });
+        return;
+      }
+      if (!phone || typeof phone !== 'string' || !phone.trim()) {
+        res.status(400).json({ success: false, message: 'Phone number is required.' });
+        return;
+      }
+      if (!password || typeof password !== 'string' || !password.trim()) {
+        res.status(400).json({ success: false, message: 'Login password is required.' });
+        return;
+      }
+      if (!pin || typeof pin !== 'string' || !pin.trim()) {
+        res.status(400).json({ success: false, message: 'Payment PIN is required.' });
         return;
       }
 
       const cleanName = String(fullName).trim().toUpperCase();
       const cleanPhone = String(phone).trim();
       const phoneNorm = normalizePhone(cleanPhone);
-      const cleanEmail = email ? String(email).trim().toLowerCase() : '';
-      const cleanPass = password ? String(password).trim() : '123456';
-      const cleanPin = pin ? String(pin).trim() : '1234';
-      const derivedAccNum = accountNumber || phoneNorm.subscriber10 || cleanPhone.replace(/\D/g, '').slice(-10);
+      const cleanDigits = cleanPhone.replace(/\D/g, '');
 
-      const existing = serverDb.findAccountByPhone(cleanPhone) || (cleanEmail ? serverDb.findAccountByIdentifier(cleanEmail) : undefined);
+      if (!phoneNorm.isValid && cleanDigits.length < 10) {
+        res.status(400).json({ success: false, message: 'Please provide a valid Nigerian phone number.' });
+        return;
+      }
+
+      // 5. PHONE NUMBER MUST BE UNIQUE
+      // Check permanent database for existing account with this phone number
+      const existing = serverDb.findAccountByPhone(cleanPhone) ||
+        (phoneNorm.national11 ? serverDb.findAccountByPhone(phoneNorm.national11) : undefined) ||
+        (phoneNorm.subscriber10 ? serverDb.findAccountByPhone(phoneNorm.subscriber10) : undefined) ||
+        (phoneNorm.e164 ? serverDb.findAccountByPhone(phoneNorm.e164) : undefined);
+
       if (existing) {
-        res.status(409).json({ 
-          success: false, 
-          error: 'This phone number is already registered. Please log in or use Forgot Password.',
-          alreadyRegistered: true,
+        res.status(409).json({
+          success: false,
+          message: 'This phone number is already registered.',
         });
         return;
       }
 
-      const salt = `${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const cleanPass = String(password).trim();
+      const cleanPin = String(pin).trim();
+      const cleanEmail = email && typeof email === 'string' && email.trim()
+        ? email.trim().toLowerCase()
+        : `${phoneNorm.national11 || cleanDigits}@opay.ng`;
+
+      const derivedAccNum = phoneNorm.subscriber10 || cleanDigits.slice(-10);
+      const maskedNin = nin && typeof nin === 'string' && nin.trim()
+        ? `•••••••${nin.trim().slice(-4)}`
+        : `•••••••${derivedAccNum.slice(-4) || '4821'}`;
+
+      const salt = `OPAY_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
       const passwordHash = computeHash(cleanPass, salt);
       const pinHash = computeHash(cleanPin, salt);
-      const maskedNin = nin ? `•••••••${String(nin).slice(-4)}` : '•••••••4821';
 
       const firstName = cleanName.split(' ')[0] || 'OPay User';
+      const parsedBalance = typeof initialBalance === 'number' && !isNaN(initialBalance) && initialBalance >= 0 ? initialBalance : 0.00;
 
       const newAccount: RegisteredUserAccount = {
-        id: `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: `acc-${derivedAccNum}-${Date.now().toString(36)}`,
         fullName: cleanName,
         phone: phoneNorm.national11 || cleanPhone,
         normalizedPhone: phoneNorm.national11 || cleanPhone,
-        email: cleanEmail || `${phoneNorm.national11 || cleanPhone}@opay.ng`,
+        email: cleanEmail,
+        role: 'user',
         ninMasked: maskedNin,
         loginPasswordHash: passwordHash,
         passwordSalt: salt,
@@ -1055,19 +1173,19 @@ async function startServer() {
         failedPinAttempts: 0,
         pinLockoutUntil: null,
         accountStatus: 'active',
-        lastLoginAt: Date.now(),
+        lastLoginAt: 0,
         verificationStatus: 'account_active',
-        verificationLog: verificationLog || {
+        verificationLog: {
           ninVerifiedAt: Date.now(),
           ninMasked: maskedNin,
           faceVerifiedAt: Date.now(),
           livenessScore: 99.4,
           facialMatchScore: 98.2,
-          auditReference: `OPAY_BIO_${Date.now()}`,
+          auditReference: `OPAY_BIO_OWNER_${Date.now()}`,
           provider: 'NIMC / OPay Identity Verification Gateway',
         },
         accountNumber: derivedAccNum,
-        balanceNgn: typeof balanceNgn === 'number' ? balanceNgn : 0.00,
+        balanceNgn: parsedBalance,
         createdAt: Date.now(),
         userProfile: {
           name: firstName,
@@ -1075,20 +1193,50 @@ async function startServer() {
           phone: phoneNorm.e164 || `+234${derivedAccNum}`,
           accountNumber: derivedAccNum,
           tier: 3,
-          tierName: 'Tier 3',
+          tierName: 'Tier 3 (Verified)',
           dailyLimitNgn: 5000000,
           singleMaxNgn: 1000000,
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
+          avatarUrl: '',
           todaySalesNgn: 0,
           savingsBalanceNgn: 0,
           owealthBalanceNgn: 0,
           cashbackPointsNgn: 500,
           isKycVerified: true,
-          email: cleanEmail || `${phoneNorm.national11 || cleanPhone}@opay.ng`,
+          email: cleanEmail,
           bvnLinked: true,
           ninLinked: true,
+          gender: 'Verified',
+          dob: '**-**-**',
+          nickname: firstName,
+          address: 'Lagos, Nigeria',
         },
-        transactions: [],
+        transactions: parsedBalance > 0 ? [
+          {
+            id: `tx-open-${Date.now()}`,
+            userId: `acc-${derivedAccNum}-${Date.now().toString(36)}`,
+            reference: `OPAY${Date.now().toString(36).toUpperCase()}`,
+            type: 'deposit',
+            title: 'Initial Deposit / Opening Balance',
+            description: 'Account Opening Balance',
+            amountNgn: parsedBalance,
+            status: 'successful',
+            timestamp: Date.now(),
+            createdTimestamp: Date.now(),
+            sender: {
+              name: authUser.fullName,
+              accountOrPhone: authUser.phone,
+              bankName: 'OPay',
+            },
+            recipient: {
+              name: cleanName,
+              accountOrPhone: derivedAccNum,
+              bankName: 'OPay',
+            },
+            feeNgn: 0,
+            category: 'inflow',
+            balanceAfterNgn: parsedBalance,
+          }
+        ] : [],
         cards: [],
         safeBoxes: [],
         activeLoan: {
@@ -1098,14 +1246,20 @@ async function startServer() {
           dailyInterestPercent: 0.1,
           status: 'eligible',
         },
-        notifications: [],
+        notifications: [
+          {
+            id: `notif-welcome-${Date.now()}`,
+            title: 'Welcome to OPay 🛡️',
+            message: `Welcome to OPay, ${cleanName}! Your account (${derivedAccNum}) is active and ready.`,
+            timestamp: Date.now(),
+            read: false,
+            type: 'security',
+          }
+        ],
         recentRecipients: [],
       };
 
       serverDb.saveAccount(newAccount);
-
-      // Create cryptographically secure session token
-      const sessionToken = serverDb.createSession(newAccount.id);
 
       const sanitizedAccount = { ...newAccount };
       delete sanitizedAccount.password;
@@ -1113,14 +1267,30 @@ async function startServer() {
 
       res.json({
         success: true,
-        token: sessionToken,
         account: sanitizedAccount,
-        message: 'Account registered successfully.',
+        message: `Account for ${cleanName} (${newAccount.phone}) successfully registered and saved to database.`,
       });
     } catch (err: unknown) {
-      console.error('Register account error:', err);
-      res.status(500).json({ success: false, message: 'Server error registering account.' });
+      console.error('Owner register user error:', err);
+      res.status(500).json({ success: false, message: 'Server error registering user.' });
     }
+  };
+
+  app.post('/api/admin/register-user', handleOwnerRegisterUser);
+  app.post('/api/admin/accounts/register', handleOwnerRegisterUser);
+
+  // Disable public registration route - only authorized owner allowed
+  app.post('/api/auth/register', (req, res) => {
+    const authUser = getAuthenticatedUser(req);
+    const isOwner = authUser && isOwnerAdminAccount(authUser.id, authUser.phone, authUser.email, authUser.fullName);
+    if (!authUser || !isOwner) {
+      res.status(403).json({
+        success: false,
+        message: 'Public registration is disabled. Only the website owner can register new accounts. Please contact the owner to register your account.',
+      });
+      return;
+    }
+    handleOwnerRegisterUser(req, res);
   });
 
   // 8F. POST /api/auth/login - Unified login verifying both Permanent & Temporary Passwords
@@ -1137,12 +1307,20 @@ async function startServer() {
 
       const cleanId = identifier.trim();
       const cleanPass = password.trim();
-      const account = serverDb.findAccountByPhone(cleanId) || serverDb.findAccountByIdentifier(cleanId);
+      let account = serverDb.findAccountByPhone(cleanId) || serverDb.findAccountByIdentifier(cleanId);
+      if (!account) {
+        const norm = normalizePhone(cleanId);
+        if (norm.isValid || norm.subscriber10) {
+          account = serverDb.findAccountByPhone(norm.national11) ||
+                    serverDb.findAccountByPhone(norm.subscriber10) ||
+                    serverDb.findAccountByPhone(norm.e164);
+        }
+      }
 
       if (!account) {
         res.status(404).json({
           success: false,
-          message: 'No account found matching this phone number or email. Please check your details or create a new account.',
+          message: 'Account not found. Please contact the owner to register your account.',
         });
         return;
       }
@@ -1508,19 +1686,6 @@ async function startServer() {
   // =========================================================================
   // 12. SECURE OWNER / ADMIN ACCOUNT MANAGEMENT & ROLE-BASED ACCESS CONTROL
   // =========================================================================
-  const isOwnerAdminAccount = (identifier?: string, phone?: string, email?: string, name?: string): boolean => {
-    const cleanId = (identifier || '').trim().toLowerCase();
-    const cleanPhone = (phone || '').replace(/\D/g, '');
-    const cleanEmail = (email || '').trim().toLowerCase();
-    const cleanName = (name || '').trim().toUpperCase();
-
-    const isMasterId = cleanId === 'acc-musaraf-default' || cleanId.includes('musaraf');
-    const isMasterPhone = cleanPhone.endsWith('7075817357') || cleanPhone.endsWith('8104443906');
-    const isMasterEmail = cleanEmail === 'moriobee44@gmail.com' || cleanEmail.includes('musaraf');
-    const isMasterName = cleanName.includes('MUSARAF') && (cleanName.includes('ABDULAZ') || cleanName.includes('OLAWALE'));
-
-    return Boolean(isMasterId || isMasterPhone || isMasterEmail || isMasterName);
-  };
 
   // 12A. POST /api/admin/verify-access - Server-side RBAC validation
   app.post('/api/admin/verify-access', (req, res) => {
@@ -1608,21 +1773,6 @@ async function startServer() {
   // =========================================================================
   // 12D. AUTHENTICATED USER SESSION & DATA ISOLATION HELPERS
   // =========================================================================
-
-  const getAuthenticatedUser = (req: express.Request): RegisteredUserAccount | null => {
-    const authHeader = req.headers['authorization'] || '';
-    const tokenHeader = req.headers['x-session-token'] || '';
-    let token = '';
-    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7).trim();
-    } else if (typeof tokenHeader === 'string') {
-      token = tokenHeader.trim();
-    } else if (req.query.token && typeof req.query.token === 'string') {
-      token = req.query.token.trim();
-    }
-    if (!token) return null;
-    return serverDb.getSessionAccount(token) || null;
-  };
 
   const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization'] || '';
@@ -1817,12 +1967,13 @@ async function startServer() {
   app.get('/api/accounts', (req, res) => {
     try {
       const authUser = getAuthenticatedUser(req);
-      const isAdmin = authUser && (authUser.id === 'acc-musaraf-default' || authUser.phone.includes('7075817357'));
+      const isAdmin = authUser && (authUser.id === 'acc-musaraf-default' || authUser.phone.includes('7075817357') || isOwnerAdminAccount(authUser.id, authUser.phone, authUser.email, authUser.fullName));
 
       if (isAdmin) {
         const accounts = serverDb.getAccounts().map(a => {
           const copy = { ...a };
           delete copy.password;
+          delete copy.customPin;
           return copy;
         });
         res.json({ success: true, accounts });
@@ -1830,14 +1981,23 @@ async function startServer() {
       }
 
       // DATA ISOLATION: For standard clients, ONLY return public lookup directory
-      // Strictly NO balances, NO transactions, NO pins, NO passwords!
-      const publicAccounts = serverDb.getAccounts().map(a => ({
-        id: a.id,
-        fullName: a.fullName,
-        phone: a.phone,
-        normalizedPhone: a.normalizedPhone || a.phone,
-        accountNumber: a.accountNumber,
-      }));
+      // Strictly NO other users' balances, transactions, pins, passwords!
+      // Include authenticated user's own balance for their account so it doesn't get zeroed
+      const publicAccounts = serverDb.getAccounts().map(a => {
+        if (authUser && a.id === authUser.id) {
+          const selfCopy = { ...a };
+          delete selfCopy.password;
+          delete selfCopy.customPin;
+          return selfCopy;
+        }
+        return {
+          id: a.id,
+          fullName: a.fullName,
+          phone: a.phone,
+          normalizedPhone: a.normalizedPhone || a.phone,
+          accountNumber: a.accountNumber,
+        };
+      });
       res.json({ success: true, accounts: publicAccounts });
     } catch (err: unknown) {
       console.error('Error getting accounts:', err);

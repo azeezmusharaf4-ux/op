@@ -10,14 +10,13 @@ interface OPayPromosProps {
 export const OPayPromos: React.FC<OPayPromosProps> = ({
   onSavingsClick,
   onInviteClick,
-  onSignUpClick,
 }) => {
   return (
     <div id="opay-promos-container" className="space-y-2 pb-2">
-      {/* Sign Up Banner matching IMG_2745.png */}
+      {/* Rewards Banner */}
       <div 
-        id="promo-signup-banner"
-        onClick={onSignUpClick || onInviteClick}
+        id="promo-rewards-banner"
+        onClick={onSavingsClick || onInviteClick}
         className="relative overflow-hidden rounded-2xl bg-[#1E1F24] p-3 border border-slate-800/60 shadow-sm cursor-pointer hover:border-[#10C986]/40 transition-all group"
       >
         <div className="relative z-10 flex items-center justify-between gap-2.5">
@@ -35,24 +34,23 @@ export const OPayPromos: React.FC<OPayPromosProps> = ({
 
             <div className="space-y-0.5">
               <span className="text-xs font-bold text-white tracking-tight">
-                Get ₦300 airtime voucher
+                Daily Cashback & Vouchers
               </span>
               <p className="text-[10px] leading-tight text-slate-400">
-                Register now and enjoy instant welcome bonuses
+                Enjoy zero-fee transfers and daily rewards on OPay
               </p>
             </div>
           </div>
 
           <button
-            id="signup-banner-btn"
+            id="rewards-banner-btn"
             onClick={(e) => {
               e.stopPropagation();
-              if (onSignUpClick) onSignUpClick();
-              else onInviteClick();
+              onSavingsClick();
             }}
             className="flex shrink-0 items-center justify-center rounded-full bg-[#10C986] px-4 py-1.5 text-xs font-bold text-[#092B1D] shadow hover:bg-[#0fd68e] active:scale-95 transition-all cursor-pointer"
           >
-            Sign Up
+            Explore
           </button>
         </div>
       </div>

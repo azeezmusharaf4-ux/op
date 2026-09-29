@@ -593,6 +593,20 @@ class ServerDatabase {
     return true;
   }
 
+  public invalidateAccountSessions(accountId: string): void {
+    if (!this.db.sessions || typeof this.db.sessions !== 'object') return;
+    let modified = false;
+    for (const [token, sess] of Object.entries(this.db.sessions)) {
+      if (sess && sess.accountId === accountId) {
+        delete this.db.sessions[token];
+        modified = true;
+      }
+    }
+    if (modified) {
+      this.save();
+    }
+  }
+
   public getUserTransactions(userId: string): Transaction[] {
     const account = this.getAccount(userId);
     if (!account) return [];

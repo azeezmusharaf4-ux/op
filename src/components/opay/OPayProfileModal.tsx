@@ -27,7 +27,8 @@ import {
   Search,
   Eye,
   EyeOff,
-  RefreshCw
+  RefreshCw,
+  UserPlus
 } from 'lucide-react';
 
 interface OPayProfileModalProps {
@@ -42,7 +43,8 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
     logoutUser,
     registeredAccounts,
     switchAccount,
-    updateTransactionPin
+    updateTransactionPin,
+    registerUserByOwner
   } = useDemoWallet();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -64,6 +66,18 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinLoading, setPinLoading] = useState(false);
   const [showPinChars, setShowPinChars] = useState(false);
+
+  // Owner Register User Modal State
+  const [showRegisterUserModal, setShowRegisterUserModal] = useState(false);
+  const [regFullName, setRegFullName] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regPin, setRegPin] = useState('');
+  const [regInitialBalance, setRegInitialBalance] = useState('');
+  const [regShowPassword, setRegShowPassword] = useState(false);
+  const [regShowPin, setRegShowPin] = useState(false);
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
 
   // Settings states
   const [securityQuestionsSet, setSecurityQuestionsSet] = useState(false);
@@ -298,6 +312,70 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
       setConfirmPinInput('');
     } else {
       setPinError(res.message || 'Failed to update Payment PIN.');
+    }
+  };
+
+  const handleOwnerRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError(null);
+
+    const cleanName = regFullName.trim();
+    const cleanPhone = regPhone.trim();
+    const cleanPass = regPassword.trim();
+    const cleanPin = regPin.trim();
+
+    if (!cleanName) {
+      setRegError("Please enter the user's full name.");
+      return;
+    }
+    if (!cleanPhone) {
+      setRegError("Please enter the user's phone number.");
+      return;
+    }
+    if (cleanPhone.replace(/\D/g, '').length < 10) {
+      setRegError('Please enter a valid Nigerian phone number (e.g. 08012345678).');
+      return;
+    }
+    if (!cleanPass || cleanPass.length < 6) {
+      setRegError('Login password must be at least 6 characters or digits.');
+      return;
+    }
+    if (!cleanPin || !/^\d{4}$/.test(cleanPin)) {
+      setRegError('Payment PIN must be exactly 4 numeric digits.');
+      return;
+    }
+
+    const initBal = regInitialBalance ? parseFloat(regInitialBalance.replace(/,/g, '')) : 0;
+    if (regInitialBalance && (isNaN(initBal) || initBal < 0)) {
+      setRegError('Please enter a valid initial balance (e.g. 0 or 50000).');
+      return;
+    }
+
+    setRegLoading(true);
+    try {
+      const res = await registerUserByOwner({
+        fullName: cleanName,
+        phone: cleanPhone,
+        password: cleanPass,
+        pin: cleanPin,
+        initialBalance: initBal || 0,
+      });
+
+      if (res.success) {
+        showToast(`User ${cleanName} registered successfully!`);
+        setShowRegisterUserModal(false);
+        setRegFullName('');
+        setRegPhone('');
+        setRegPassword('');
+        setRegPin('');
+        setRegInitialBalance('');
+      } else {
+        setRegError(res.error || 'Failed to register user.');
+      }
+    } catch (err: unknown) {
+      setRegError(err instanceof Error ? err.message : 'Network error registering user.');
+    } finally {
+      setRegLoading(false);
     }
   };
 
@@ -816,6 +894,24 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
                       {registeredAccounts.length} Accounts
                     </span>
                   </div>
+
+                  {/* Owner-Only: Register User Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegFullName('');
+                      setRegPhone('');
+                      setRegPassword('');
+                      setRegPin('');
+                      setRegInitialBalance('');
+                      setRegError(null);
+                      setShowRegisterUserModal(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#00D589] hover:bg-[#00E599] active:scale-[0.99] text-[#072418] font-bold text-xs transition-all shadow-md shadow-emerald-950/30 cursor-pointer uppercase tracking-wider"
+                  >
+                    <UserPlus className="h-4 w-4 stroke-[2.5]" />
+                    <span>+ Register User</span>
+                  </button>
 
                   <div className="relative flex items-center">
                     <Search className="absolute left-3 h-3.5 w-3.5 text-slate-400" />
@@ -1839,6 +1935,175 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* OWNER-ONLY REGISTER USER MODAL (Permanent Database Account Creation)       */}
+        {/* ========================================================================= */}
+        {showRegisterUserModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="w-full max-w-sm rounded-3xl bg-[#181B22] border border-slate-700 p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-[#00D589] border border-emerald-500/30">
+                    <UserPlus className="h-5 w-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Register User</h3>
+                    <p className="text-[10px] text-slate-400">Owner-only permanent account creation</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!regLoading) {
+                      setShowRegisterUserModal(false);
+                      setRegError(null);
+                    }
+                  }}
+                  className="rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {regError && (
+                <div className="flex items-center gap-2 rounded-xl bg-red-950/60 p-3 text-xs text-red-300 border border-red-900/60 animate-in fade-in">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+                  <span>{regError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleOwnerRegisterSubmit} className="space-y-3 text-left">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Full Name <span className="text-[#00D589]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    placeholder="e.g. OLUMIDE JOHNSON ADELEKE"
+                    className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Phone Number <span className="text-[#00D589]">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    placeholder="e.g. 08012345678"
+                    className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Normalized across 080..., +234..., and 234... formats
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Login Password <span className="text-[#00D589]">*</span> (6 digits or chars)
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={regShowPassword ? 'text' : 'password'}
+                      required
+                      maxLength={12}
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="e.g. 123456"
+                      className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 pr-9 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRegShowPassword(!regShowPassword)}
+                      className="absolute right-2.5 text-slate-400 hover:text-white"
+                    >
+                      {regShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Payment PIN <span className="text-[#00D589]">*</span> (4 numeric digits)
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={regShowPin ? 'text' : 'password'}
+                      required
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      value={regPin}
+                      onChange={(e) => setRegPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      placeholder="e.g. 1234"
+                      className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 pr-9 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono tracking-widest"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRegShowPin(!regShowPin)}
+                      className="absolute right-2.5 text-slate-400 hover:text-white"
+                    >
+                      {regShowPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Initial Balance (₦) <span className="text-slate-400 font-normal">(Optional, default ₦0.00)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={regInitialBalance}
+                    onChange={(e) => setRegInitialBalance(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={regLoading}
+                    onClick={() => {
+                      setShowRegisterUserModal(false);
+                      setRegError(null);
+                    }}
+                    className="w-1/3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={regLoading}
+                    className="w-2/3 flex items-center justify-center gap-1.5 rounded-xl bg-[#00D589] hover:bg-[#00E599] text-[#072418] py-2.5 text-xs font-black transition-all shadow-md shadow-emerald-950/40 cursor-pointer disabled:opacity-60"
+                  >
+                    {regLoading ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Saving Account...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-3.5 w-3.5 stroke-[2.5]" />
+                        <span>Save Account</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

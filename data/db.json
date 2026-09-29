@@ -6,9 +6,9 @@
       "phone": "07075817357",
       "email": "moriobee44@gmail.com",
       "ninMasked": "•••••••4821",
-      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
-      "transactionPinHash": "bab1ca8bba9e8279a3f763e01b07aa8e6079b08c92701103f61099ef07592413",
-      "pinSalt": "1788485341945_319ziuh0koa",
+      "loginPasswordHash": "3b584ed3f08e4b1bbaf177691d135e7d483c8b8cf4a40605d4b7690635353a8f",
+      "transactionPinHash": "bbfa25cf25fd259c565ee16a96bea148c5842292e244cd641c68268a40130841",
+      "pinSalt": "1790682437233_chyk33105ff",
       "failedPinAttempts": 0,
       "pinLockoutUntil": null,
       "verificationStatus": "account_active",
@@ -22,7 +22,7 @@
         "provider": "NIMC / OPay Identity Verification Gateway"
       },
       "accountNumber": "7075817357",
-      "balanceNgn": 123900,
+      "balanceNgn": 613900,
       "createdAt": 1724800000000,
       "userProfile": {
         "name": "MUSARAF",
@@ -36,7 +36,7 @@
         "avatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=300&auto=format&fit=crop&q=80",
         "todaySalesNgn": 11300,
         "savingsBalanceNgn": 33450,
-        "owealthBalanceNgn": 8200,
+        "owealthBalanceNgn": 498200,
         "cashbackPointsNgn": 1490,
         "isKycVerified": true,
         "email": "moriobee44@gmail.com",
@@ -49,6 +49,58 @@
         "address": "10 Allen Avenue, Ikeja, Lagos State"
       },
       "transactions": [
+        {
+          "id": "tx-1790682478050-1tg7",
+          "userId": "acc-musaraf-default",
+          "reference": "OPAY260929W6GKM5",
+          "type": "bank_transfer",
+          "title": "Transfer to MUSARAF ABDULAZEEZ",
+          "description": "Bank Transfer to 9138764755 (Momo Payment Service Bank)",
+          "amountNgn": 10000,
+          "status": "successful",
+          "timestamp": 1790682478050,
+          "createdTimestamp": 1790682478050,
+          "sender": {
+            "name": "MUSARAF OLAWALE ABDULAZEEZ",
+            "accountOrPhone": "7075817357",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "MUSARAF ABDULAZEEZ",
+            "accountOrPhone": "9138764755",
+            "bankName": "Momo Payment Service Bank"
+          },
+          "feeNgn": 0,
+          "category": "outflow",
+          "balanceAfterNgn": 613900,
+          "sessionId": "26017906824780507941"
+        },
+        {
+          "id": "tx-dep-1790682356623-ori6",
+          "userId": "acc-musaraf-default",
+          "reference": "OPAY260929PRW9HR",
+          "type": "deposit",
+          "title": "Bank Transfer Top-up",
+          "description": "Bank Inflow Deposit",
+          "amountNgn": 500000,
+          "status": "successful",
+          "timestamp": 1790682356623,
+          "createdTimestamp": 1790682356623,
+          "sender": {
+            "name": "Bank Inflow Deposit",
+            "accountOrPhone": "BANK-TOPUP",
+            "bankName": "Commercial Bank"
+          },
+          "recipient": {
+            "name": "MUSARAF OLAWALE ABDULAZEEZ",
+            "accountOrPhone": "7075817357",
+            "bankName": "OPay"
+          },
+          "feeNgn": 0,
+          "category": "inflow",
+          "balanceAfterNgn": 623900,
+          "sessionId": "26017906823566233177"
+        },
         {
           "id": "tx-op-1788393360902",
           "reference": "OPAY2609026WDV4V",
@@ -575,6 +627,28 @@
       },
       "notifications": [
         {
+          "id": "notif-1790682478050-bcr9",
+          "title": "Debit Alert 💸",
+          "message": "You sent ₦10,000.00 to MUSARAF ABDULAZEEZ. New balance: ₦613,900.00",
+          "timestamp": 1790682478050,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-1790682478050-1tg7",
+          "amountNgn": 10000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-dep-1790682356623",
+          "title": "Money Added Successfully 💰",
+          "message": "₦500,000.00 has been credited to your OPay wallet.",
+          "timestamp": 1790682356623,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-dep-1790682356623-ori6",
+          "amountNgn": 500000,
+          "status": "successful"
+        },
+        {
           "id": "notif-svc-1788392875268",
           "title": "DStv Payment Successful",
           "message": "You spent ₦2,000.00 on DStv TV Payment for +2347075817357. Earned ₦40.00 cashback!",
@@ -627,7 +701,17 @@
       "mustResetPassword": false,
       "normalizedPhone": "07075817357",
       "accountStatus": "active",
-      "recentRecipients": []
+      "recentRecipients": [
+        {
+          "id": "recip-1790682478050",
+          "name": "MUSARAF ABDULAZEEZ",
+          "account": "9138764755",
+          "bank": "Momo Payment Service Bank",
+          "isOpay": false,
+          "lastUsedAt": 1790682478050
+        }
+      ],
+      "lastLoginAt": 1790683886966
     },
     {
       "id": "acc-lateefat-user-b",
@@ -894,6 +978,107 @@
       "normalizedPhone": "09125856006",
       "accountStatus": "active",
       "recentRecipients": []
+    },
+    {
+      "id": "acc-8055566778-mummya2v",
+      "fullName": "BABATUNDE ADENIYI DANIEL",
+      "phone": "08055566778",
+      "normalizedPhone": "08055566778",
+      "email": "08055566778@opay.ng",
+      "role": "user",
+      "ninMasked": "•••••••6778",
+      "loginPasswordHash": "3dae702eb6eeef7dd6e4112fb01dfe1dcf7fb7c04892ce063b2c6ea3685c8504",
+      "passwordSalt": "OPAY_1790683886983_62c3bb21",
+      "transactionPinHash": "167bd96e19da2a14249b950bd01257ee4a96b14816c4dd432e58ad16939c61af",
+      "pinSalt": "OPAY_1790683886983_62c3bb21",
+      "failedPinAttempts": 0,
+      "pinLockoutUntil": null,
+      "accountStatus": "active",
+      "lastLoginAt": 1790683886995,
+      "verificationStatus": "account_active",
+      "verificationLog": {
+        "ninVerifiedAt": 1790683886983,
+        "ninMasked": "•••••••6778",
+        "faceVerifiedAt": 1790683886983,
+        "livenessScore": 99.4,
+        "facialMatchScore": 98.2,
+        "auditReference": "OPAY_BIO_OWNER_1790683886983",
+        "provider": "NIMC / OPay Identity Verification Gateway"
+      },
+      "accountNumber": "8055566778",
+      "balanceNgn": 25000,
+      "createdAt": 1790683886983,
+      "userProfile": {
+        "name": "BABATUNDE",
+        "fullName": "BABATUNDE ADENIYI DANIEL",
+        "phone": "+2348055566778",
+        "accountNumber": "8055566778",
+        "tier": 3,
+        "tierName": "Tier 3 (Verified)",
+        "dailyLimitNgn": 5000000,
+        "singleMaxNgn": 1000000,
+        "avatarUrl": "",
+        "todaySalesNgn": 0,
+        "savingsBalanceNgn": 0,
+        "owealthBalanceNgn": 0,
+        "cashbackPointsNgn": 500,
+        "isKycVerified": true,
+        "email": "08055566778@opay.ng",
+        "bvnLinked": true,
+        "ninLinked": true,
+        "gender": "Verified",
+        "dob": "**-**-**",
+        "nickname": "BABATUNDE",
+        "address": "Lagos, Nigeria"
+      },
+      "transactions": [
+        {
+          "id": "tx-open-1790683886983",
+          "userId": "acc-8055566778-mummya2v",
+          "reference": "OPAYMUMMYA2V",
+          "type": "deposit",
+          "title": "Initial Deposit / Opening Balance",
+          "description": "Account Opening Balance",
+          "amountNgn": 25000,
+          "status": "successful",
+          "timestamp": 1790683886983,
+          "createdTimestamp": 1790683886983,
+          "sender": {
+            "name": "MUSARAF OLAWALE ABDULAZEEZ",
+            "accountOrPhone": "07075817357",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "BABATUNDE ADENIYI DANIEL",
+            "accountOrPhone": "8055566778",
+            "bankName": "OPay"
+          },
+          "feeNgn": 0,
+          "category": "inflow",
+          "balanceAfterNgn": 25000
+        }
+      ],
+      "cards": [],
+      "safeBoxes": [],
+      "activeLoan": {
+        "loanLimitNgn": 200000,
+        "currentBorrowedNgn": 0,
+        "dueDate": 1793275886983,
+        "dailyInterestPercent": 0.1,
+        "status": "eligible"
+      },
+      "notifications": [
+        {
+          "id": "notif-welcome-1790683886984",
+          "title": "Welcome to OPay 🛡️",
+          "message": "Welcome to OPay, BABATUNDE ADENIYI DANIEL! Your account (8055566778) is active and ready.",
+          "timestamp": 1790683886984,
+          "read": false,
+          "type": "security"
+        }
+      ],
+      "recentRecipients": [],
+      "mustResetPassword": false
     }
   ],
   "processedBscTxIds": [],
@@ -913,6 +1098,18 @@
     "ed1679c587a185fab4b62cbd6b9462b28a328f7fcb71a8f2477135d57882a038": {
       "accountId": "acc-1790607640937-hqu5",
       "createdAt": 1790607652765
+    },
+    "ea3e0ae904257708c54e79507fa4564bc57753eee64dbc90e3f35f05d46b6fa7": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790683879953
+    },
+    "5512b183d84c2ee94d37036bb6e8eb5ae25118a37a903c26b999f4c5b403a249": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790683886967
+    },
+    "f788b1059eb557a3e39d9411c22803d8e85cf11f85f48a9c467666372c89117f": {
+      "accountId": "acc-8055566778-mummya2v",
+      "createdAt": 1790683886996
     }
   }
 }

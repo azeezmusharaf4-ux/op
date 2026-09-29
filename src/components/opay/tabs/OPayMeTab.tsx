@@ -89,7 +89,7 @@ export const OPayMeTab: React.FC<OPayMeTabProps> = ({
               onClick={onOpenProfileModal}
               className="rounded-full bg-[#00D589] px-4 py-1.5 text-xs font-black text-[#082218] shadow hover:bg-[#00E599] transition-colors"
             >
-              Login / Sign Up
+              Login
             </button>
           </div>
         ) : (

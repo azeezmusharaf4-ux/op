@@ -26,6 +26,7 @@ import {
 import { OPayNumericKeypad } from '../../common/OPayNumericKeypad';
 import { useDemoWallet } from '../../../context/DemoWalletContext';
 import { VerificationAuditLog, VerificationStatus, RegisteredUserAccount } from '../../../types';
+import { normalizePhone, isSamePhone } from '../../../utils/phone';
 
 interface OPayAuthScreenProps {
   onLogin: (credentials: { identifier: string; pinOrPass: string }) => Promise<{ 
@@ -34,7 +35,7 @@ interface OPayAuthScreenProps {
     verificationStatus?: VerificationStatus;
     accountData?: any;
   }>;
-  onRegister: (data: {
+  onRegister?: (data: {
     fullName: string;
     phone: string;
     email?: string;
@@ -67,15 +68,14 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
   } = useDemoWallet();
 
   // Determine starting mode: Screen 2 ("Log in to your account") is standard entry matching OPay 4-step flow
-  const determineStartMode = (): 'welcome_back' | 'full_login' | 'register' | 'forgot_password' => {
+  const determineStartMode = (): 'welcome_back' | 'full_login' | 'forgot_password' => {
     if (initialMode === 'forgot_password') return 'forgot_password';
-    if (initialMode === 'register') return 'register';
     if (initialMode === 'welcome_back' && rememberedAccount && !isManuallyLoggedOut) return 'welcome_back';
     if (rememberedAccount && !isManuallyLoggedOut) return 'welcome_back';
     return 'full_login';
   };
 
-  const [activeMode, setActiveMode] = useState<'welcome_back' | 'full_login' | 'register' | 'forgot_password'>(determineStartMode);
+  const [activeMode, setActiveMode] = useState<'welcome_back' | 'full_login' | 'forgot_password'>(determineStartMode);
 
   // Welcome back state (Screens 3 & 4)
   const [welcomePassword, setWelcomePassword] = useState('');
@@ -136,17 +136,6 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string | null>(null);
   const [isForgotLoading, setIsForgotLoading] = useState(false);
-
-  // Register form state (only: name, phone number, login password, payment pin password)
-  const [regFullName, setRegFullName] = useState('');
-  const [regPhone, setRegPhone] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [showRegPassword, setShowRegPassword] = useState(false);
-  const [regPin, setRegPin] = useState('');
-  const [regPinConfirm, setRegPinConfirm] = useState('');
-  const [regError, setRegError] = useState<string | null>(null);
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(null);
 
   // Help modal state
   const [showHelpToast, setShowHelpToast] = useState(false);
@@ -217,18 +206,6 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     setActiveMode('forgot_password');
   };
 
-  // Helper: Normalize Nigerian phone number (handles both 10-digit and 11-digit with leading 0)
-  const normalizeNigerianPhone = (raw: string) => {
-    const digits = raw.replace(/\D/g, '');
-    // If 11 digits starting with 0 (e.g., 07075817357), strip the leading zero -> 7075817357
-    const stripped10 = digits.startsWith('0') ? digits.slice(1) : digits;
-    const local11 = `0${stripped10}`;
-    const international = `+234${stripped10}`;
-    // Nigerian mobile numbers: 10 digits starting with 7, 8, or 9
-    const isValid = (stripped10.length === 10 && /^[789]\d{9}$/.test(stripped10)) || digits.length === 10 || digits.length === 11;
-    return { digits, stripped10, local11, international, isValid };
-  };
-
   // Step 1: Verify phone number belongs to an existing account
   const handleForgotVerifyPhone = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -241,92 +218,55 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
       return;
     }
 
-    const { stripped10, local11, international } = normalizeNigerianPhone(cleanInput);
+    const norm = normalizePhone(cleanInput);
+    const cleanDigits = cleanInput.replace(/\D/g, '');
 
-    if (stripped10.length !== 10 && cleanInput.length < 10) {
+    if (!norm.isValid && cleanDigits.length < 10) {
       setForgotError('Please enter a valid 10-digit (e.g. 7075817357) or 11-digit (e.g. 07075817357) mobile number.');
       return;
     }
 
+    const targetLocal11 = norm.national11 || cleanDigits;
+    const target10 = norm.subscriber10 || cleanDigits.slice(-10);
+    const targetE164 = norm.e164 || `+234${target10}`;
+
     setIsForgotLoading(true);
     try {
-      let serverData: { success?: boolean; exists?: boolean; phone?: string; maskedPhone?: string; fullName?: string; accountId?: string; message?: string } | null = null;
-      try {
-        const response = await fetch('/api/auth/forgot-password/check-phone', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            phone: local11,
-            rawPhone: cleanInput,
-            strippedPhone: stripped10,
-            internationalPhone: international,
-          }),
-        });
+      const response = await fetch('/api/auth/forgot-password/check-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone: targetLocal11,
+          rawPhone: cleanInput,
+          strippedPhone: target10,
+          internationalPhone: targetE164,
+        }),
+      });
 
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          serverData = await response.json();
-        }
-      } catch (networkErr) {
-        console.warn('Server check-phone network issue, falling back to local accounts:', networkErr);
-      }
+      const serverData = await response.json().catch(() => null);
 
-      if (serverData && serverData.success && serverData.exists) {
-        setForgotPhone(serverData.phone || local11);
-        setForgotMaskedPhone(serverData.maskedPhone || `${local11.slice(0, 3)} •••• ${local11.slice(-4)}`);
+      if (response.ok && serverData && serverData.success && serverData.exists) {
+        setForgotPhone(serverData.phone || targetLocal11);
+        setForgotMaskedPhone(serverData.maskedPhone || `${targetLocal11.slice(0, 3)} •••• ${targetLocal11.slice(-4)}`);
         setForgotAccountName(serverData.fullName || '');
         setForgotAccountId(serverData.accountId || '');
+        setForgotError(null);
         setForgotStep(2);
         return;
       }
 
-      // Resilient local match: check registeredAccounts and rememberedAccount
-      const localMatch = registeredAccounts.find(acc => {
-        const pDigits = acc.phone.replace(/\D/g, '');
-        return pDigits.includes(stripped10) || stripped10.includes(pDigits) || pDigits === local11 || acc.accountNumber === stripped10;
-      }) || (rememberedAccount && (rememberedAccount.phone.replace(/\D/g, '').includes(stripped10) || stripped10.includes(rememberedAccount.phone.replace(/\D/g, ''))) ? rememberedAccount : null);
-
-      if (localMatch) {
-        const pDigits = localMatch.phone.replace(/\D/g, '');
-        const masked = pDigits.length >= 10 ? `${pDigits.slice(0, 3)} •••• ${pDigits.slice(-4)}` : localMatch.phone;
-        setForgotPhone(localMatch.phone);
-        setForgotMaskedPhone(masked);
-        setForgotAccountName(localMatch.fullName || localMatch.userProfile?.fullName || 'OPay Customer');
-        setForgotAccountId(localMatch.id);
-        setForgotStep(2);
-        return;
-      }
-
-      if (serverData?.message) {
-        setForgotError(serverData.message);
-      } else {
-        setForgotError('No account found matching this phone number. Please check the number and try again.');
-      }
+      setForgotError(
+        serverData?.message || 'No account found matching this phone number. Please check the number and try again.'
+      );
     } catch (err: unknown) {
       console.error('Verify phone error:', err);
-      // Fallback: Check local account even in case of any unexpected browser exception
-      const localMatch = registeredAccounts.find(acc => {
-        const pDigits = acc.phone.replace(/\D/g, '');
-        return pDigits.includes(stripped10) || stripped10.includes(pDigits) || pDigits === local11;
-      }) || (rememberedAccount && (rememberedAccount.phone.replace(/\D/g, '').includes(stripped10) || stripped10.includes(rememberedAccount.phone.replace(/\D/g, ''))) ? rememberedAccount : null);
-
-      if (localMatch) {
-        const pDigits = localMatch.phone.replace(/\D/g, '');
-        const masked = pDigits.length >= 10 ? `${pDigits.slice(0, 3)} •••• ${pDigits.slice(-4)}` : localMatch.phone;
-        setForgotPhone(localMatch.phone);
-        setForgotMaskedPhone(masked);
-        setForgotAccountName(localMatch.fullName || localMatch.userProfile?.fullName || 'OPay Customer');
-        setForgotAccountId(localMatch.id);
-        setForgotStep(2);
-      } else {
-        setForgotError('No account found matching this phone number. Please check the number and try again.');
-      }
+      setForgotError('Network error checking phone number. Please check your connection and try again.');
     } finally {
       setIsForgotLoading(false);
     }
   };
 
-  // Step 2: Create & confirm new password directly
+  // Step 2: Create & confirm new password directly on authoritative server database
   const handleForgotResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError(null);
@@ -346,29 +286,37 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
 
     setIsForgotLoading(true);
     try {
-      let serverData: { success?: boolean; phone?: string; accountId?: string; message?: string } | null = null;
-      try {
-        const response = await fetch('/api/auth/forgot-password/reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: forgotPhone.trim(),
-            accountId: forgotAccountId,
-            newPassword: cleanNewPass,
-            confirmPassword: cleanConfirmPass,
-          }),
-        });
+      const response = await fetch('/api/auth/forgot-password/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: forgotPhone.trim(),
+          accountId: forgotAccountId,
+          newPassword: cleanNewPass,
+          confirmPassword: cleanConfirmPass,
+        }),
+      });
 
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          serverData = await response.json();
-        }
-      } catch (netErr) {
-        console.warn('Reset password server issue, proceeding with local update:', netErr);
+      const serverData = await response.json().catch(() => null);
+
+      if (!response.ok || !serverData || !serverData.success) {
+        setForgotError(
+          serverData?.message || 'Failed to permanently update password on server. Please try again.'
+        );
+        return;
       }
 
+      // Authoritative permanent account updated successfully on server!
+      const targetAccId = serverData.accountId || forgotAccountId;
+      const targetPhone = serverData.phone || forgotPhone.trim();
+
+      // Invalidate any stale session or token in browser
+      try {
+        localStorage.removeItem('opay_session_token');
+        localStorage.removeItem('opay_active_account');
+      } catch {}
+
       // Synchronize in client context & remember this account
-      const targetAccId = forgotAccountId || serverData?.accountId || rememberedAccount?.id || (matchedLoginAccount?.id ?? '');
       if (targetAccId) {
         setRememberedAccount(targetAccId);
         updateAccountPasswordInClient(targetAccId, cleanNewPass);
@@ -377,24 +325,18 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
         await refreshAccountsFromServer();
       } catch {}
 
-      const activePhone = serverData?.phone || forgotPhone.trim() || (targetAccId ? registeredAccounts.find(a => a.id === targetAccId)?.phone : '') || '';
-      if (activePhone) setLoginIdentifier(activePhone);
+      if (targetPhone) setLoginIdentifier(targetPhone);
       setLoginPassword(cleanNewPass);
       setWelcomePassword(cleanNewPass);
+      setForgotError(null);
+
+      // ONLY advance to Step 3 after the server confirmed the update!
       setForgotStep(3);
     } catch (err: unknown) {
       console.error('Password reset error:', err);
-      // Ensure client is always updated so the user is never stuck
-      const targetAccId = forgotAccountId || rememberedAccount?.id || (matchedLoginAccount?.id ?? '');
-      if (targetAccId) {
-        setRememberedAccount(targetAccId);
-        updateAccountPasswordInClient(targetAccId, cleanNewPass);
-      }
-      const activePhone = forgotPhone.trim() || (targetAccId ? registeredAccounts.find(a => a.id === targetAccId)?.phone : '') || '';
-      if (activePhone) setLoginIdentifier(activePhone);
-      setLoginPassword(cleanNewPass);
-      setWelcomePassword(cleanNewPass);
-      setForgotStep(3);
+      setForgotError(
+        err instanceof Error ? err.message : 'Network error updating password. Please check your connection and try again.'
+      );
     } finally {
       setIsForgotLoading(false);
     }
@@ -404,11 +346,16 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     setIsForgotLoading(true);
     setForgotError(null);
     try {
-      const targetPhone = loginIdentifier || forgotPhone.trim() || (rememberedAccount?.phone ?? '');
-      const targetPass = loginPassword || forgotNewPassword.trim() || welcomePassword;
+      const targetPhone = loginIdentifier.trim() || forgotPhone.trim() || (rememberedAccount?.phone ?? '');
+      const targetPass = loginPassword.trim() || forgotNewPassword.trim() || welcomePassword.trim();
 
       if (!targetPhone) {
-        setForgotError('Please enter your phone number to sign in.');
+        setForgotError('Please enter your registered phone number to sign in.');
+        return;
+      }
+
+      if (!targetPass) {
+        setForgotError('Please enter your new password to sign in.');
         return;
       }
 
@@ -479,7 +426,7 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     }
   };
 
-  const handleFullLoginNext = (e: React.FormEvent) => {
+  const handleFullLoginNext = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
@@ -489,9 +436,41 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
       return;
     }
 
-    // Step 2 -> Step 3: Advance directly to "Welcome back!" screen
-    setActiveMode('welcome_back');
-    setIsKeypadVisible(false);
+    setIsLoggingIn(true);
+    try {
+      // 2. NORMAL LOGIN MUST BE LOGIN ONLY
+      // Check if the phone number exists in permanent database before allowing progression
+      const res = await fetch('/api/auth/check-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanId }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data || !data.exists) {
+        setLoginError('Account not found. Please contact the owner to register your account.');
+        return;
+      }
+
+      if (data.accountId) {
+        setRememberedAccount(data.accountId);
+      }
+      setLoginIdentifier(data.phone || cleanId);
+      // Advance to password entry on "Welcome back!" screen
+      setActiveMode('welcome_back');
+      setIsKeypadVisible(false);
+    } catch (err: unknown) {
+      const found = registeredAccounts.find(a => isSamePhone(a.phone, cleanId) || a.accountNumber === cleanId || a.email.toLowerCase() === cleanId.toLowerCase());
+      if (!found) {
+        setLoginError('Account not found. Please contact the owner to register your account.');
+        return;
+      }
+      if (found.id) setRememberedAccount(found.id);
+      setActiveMode('welcome_back');
+      setIsKeypadVisible(false);
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleFullLoginSubmit = async (e: React.FormEvent) => {
@@ -532,75 +511,17 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
       }
 
       if (!result.success) {
-        setLoginError(result.error || 'Invalid login credentials. Please check your details.');
+        const errMsg = result.error || 'Incorrect login password. Please check your credentials and try again.';
+        if (errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('no account')) {
+          setLoginError('Account not found. Please contact the owner to register your account.');
+        } else {
+          setLoginError(errMsg);
+        }
       }
     } catch (err: unknown) {
       setLoginError(err instanceof Error ? err.message : 'Login failed. Please try again.');
     } finally {
       setIsLoggingIn(false);
-    }
-  };
-
-  const handleRegisterInitiate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRegError(null);
-
-    const cleanName = regFullName.trim();
-    const cleanPhone = regPhone.replace(/\D/g, '');
-    const cleanPass = regPassword.trim();
-    const cleanPin = regPin.trim();
-
-    if (!cleanName || cleanName.length < 2) {
-      setRegError('Please enter your full name.');
-      return;
-    }
-
-    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
-      setRegError('Please enter a valid 10 or 11-digit Nigerian phone number.');
-      return;
-    }
-
-    if (cleanPass.length < 6) {
-      setRegError('Login password must be at least 6 digits.');
-      return;
-    }
-
-    if (cleanPin.length !== 4) {
-      setRegError('Payment PIN password must be exactly 4 digits.');
-      return;
-    }
-
-    if (cleanPin !== regPinConfirm.trim()) {
-      setRegError('Payment PIN password confirmation does not match.');
-      return;
-    }
-
-    setIsRegistering(true);
-    try {
-      const normalizedPhone = cleanPhone.startsWith('0') ? cleanPhone : `0${cleanPhone}`;
-      const payload = {
-        fullName: cleanName.toUpperCase(),
-        phone: normalizedPhone,
-        email: `${normalizedPhone}@opay.ng`,
-        nin: '10000000000',
-        password: cleanPass,
-        pin: cleanPin,
-      };
-
-      const result = await onRegister(payload);
-
-      if (result.success) {
-        setRegSuccessMessage('Account created successfully! Logging in...');
-        setTimeout(() => {
-          onClose?.();
-        }, 500);
-      } else {
-        setRegError(result.error || 'Failed to create account. Please try again.');
-      }
-    } catch (err: unknown) {
-      setRegError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
-    } finally {
-      setIsRegistering(false);
     }
   };
 
@@ -924,22 +845,18 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
                     {/* Green Pill Button: NEXT */}
                     <button
                       type="submit"
-                      className="w-full rounded-full bg-[#00D589] py-4 text-sm font-black text-[#072418] hover:bg-[#00E599] active:scale-[0.99] transition-all shadow-lg shadow-emerald-950/40 uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={isLoggingIn}
+                      className="w-full rounded-full bg-[#00D589] py-4 text-sm font-black text-[#072418] hover:bg-[#00E599] active:scale-[0.99] transition-all shadow-lg shadow-emerald-950/40 uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                     >
-                      <span>NEXT</span>
+                      {isLoggingIn ? (
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          <span>CHECKING ACCOUNT...</span>
+                        </div>
+                      ) : (
+                        <span>NEXT</span>
+                      )}
                     </button>
-
-                    {/* Don't have an account? Click here to Sign Up */}
-                    <div className="text-center pt-2 text-xs text-slate-400">
-                      <span>Don't have an account? </span>
-                      <button
-                        type="button"
-                        onClick={() => setActiveMode('register')}
-                        className="font-semibold text-[#00D589] hover:underline cursor-pointer"
-                      >
-                        Click here to Sign Up
-                      </button>
-                    </div>
                   </form>
                 )}
 
@@ -1022,156 +939,7 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
           )}
 
           {/* ========================================================= */}
-          {/* VIEW 3: REGISTRATION FLOW                                 */}
-          {/* ========================================================= */}
-          {activeMode === 'register' && (
-            <div className="flex-1 space-y-4 animate-in fade-in duration-200">
-              <div className="space-y-1">
-                <h1 className="text-xl font-bold text-white tracking-tight">
-                  Create OPay Account
-                </h1>
-                <p className="text-xs text-slate-400">
-                  Enter your details to create your OPay account
-                </p>
-              </div>
-
-              {regError && (
-                <div className="flex items-center gap-2 rounded-xl bg-red-950/60 p-3 text-xs text-red-300 border border-red-900/60 animate-in fade-in">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-                  <span>{regError}</span>
-                </div>
-              )}
-
-              {regSuccessMessage && (
-                <div className="flex items-center gap-2 rounded-xl bg-emerald-950/60 p-3 text-xs text-emerald-300 border border-emerald-900/60 animate-in fade-in">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[#00D589]" />
-                  <span>{regSuccessMessage}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleRegisterInitiate} className="space-y-3">
-                {/* Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    value={regFullName}
-                    onChange={(e) => setRegFullName(e.target.value)}
-                    placeholder="Enter your full name"
-                    className="w-full rounded-xl bg-[#1A1D24] p-3 text-sm text-white border border-slate-700 focus:border-[#00D589] focus:outline-none uppercase placeholder-slate-500"
-                    required
-                  />
-                </div>
-
-                {/* Phone Number */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    pattern="[0-9]*"
-                    value={regPhone}
-                    onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                    placeholder="e.g. 08012345678"
-                    className="w-full rounded-xl bg-[#1A1D24] p-3 text-sm text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono placeholder-slate-500"
-                    required
-                  />
-                </div>
-
-                {/* Login Password */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Login Password
-                  </label>
-                  <div className="relative flex items-center rounded-xl bg-[#1A1D24] border border-slate-700 focus-within:border-[#00D589] transition-colors">
-                    <input
-                      type={showRegPassword ? 'text' : 'password'}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      placeholder="Create 6-digit login password"
-                      className="w-full bg-transparent p-3 text-sm text-white focus:outline-none placeholder-slate-500 font-mono"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="pr-4 text-slate-400 hover:text-white"
-                      tabIndex={-1}
-                    >
-                      {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Payment PIN Password */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Payment PIN Password
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      value={regPin}
-                      onChange={(e) => setRegPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      placeholder="4-digit PIN"
-                      className="w-full rounded-xl bg-[#1A1D24] p-2.5 text-center text-sm font-mono font-bold text-[#00D589] border border-slate-700 focus:border-[#00D589] focus:outline-none placeholder-slate-500"
-                      required
-                    />
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      value={regPinConfirm}
-                      onChange={(e) => setRegPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      placeholder="Confirm PIN"
-                      className="w-full rounded-xl bg-[#1A1D24] p-2.5 text-center text-sm font-mono font-bold text-[#00D589] border border-slate-700 focus:border-[#00D589] focus:outline-none placeholder-slate-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isRegistering}
-                  className="w-full rounded-full bg-[#00D589] py-3.5 text-sm font-bold text-[#072418] hover:bg-[#00E599] transition-all cursor-pointer mt-3 flex items-center justify-center gap-2"
-                >
-                  {isRegistering ? (
-                    <div className="flex items-center gap-2">
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Creating Account...</span>
-                    </div>
-                  ) : (
-                    <span>Create Account</span>
-                  )}
-                </button>
-
-                <div className="text-center pt-2 text-xs text-slate-400">
-                  <span>Already have an account? </span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('full_login')}
-                    className="font-semibold text-[#00D589] hover:underline"
-                  >
-                    Log In
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* ========================================================= */}
-          {/* VIEW 4: FORGOT PASSWORD FLOW                              */}
+          {/* VIEW 3: FORGOT PASSWORD FLOW                              */}
           {/* ========================================================= */}
           {activeMode === 'forgot_password' && (
             <div className="flex-1 flex flex-col justify-between space-y-4 animate-in fade-in duration-200">

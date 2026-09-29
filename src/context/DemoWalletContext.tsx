@@ -39,6 +39,14 @@ interface DemoWalletContextType {
     pin: string;
     verificationLog?: VerificationAuditLog;
   }) => Promise<{ success: boolean; error?: string }>;
+  registerUserByOwner: (data: {
+    fullName: string;
+    phone: string;
+    password: string;
+    pin: string;
+    initialBalance?: number;
+    email?: string;
+  }) => Promise<{ success: boolean; error?: string; account?: RegisteredUserAccount }>;
   loginUser: (credentials: {
     identifier: string;
     pinOrPass: string;
@@ -1529,6 +1537,57 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  // 1B. Owner-Only Registration with Permanent Database Persistence
+  const registerUserByOwner = async (data: {
+    fullName: string;
+    phone: string;
+    password: string;
+    pin: string;
+    initialBalance?: number;
+    email?: string;
+  }): Promise<{ success: boolean; error?: string; account?: RegisteredUserAccount }> => {
+    try {
+      const token = localStorage.getItem('opay_session_token');
+      const res = await fetch('/api/admin/register-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          fullName: data.fullName,
+          phone: data.phone,
+          password: data.password,
+          pin: data.pin,
+          initialBalance: data.initialBalance || 0,
+          email: data.email,
+        }),
+      });
+
+      const resData = await res.json().catch(() => null);
+      if (!res.ok || !resData || !resData.success) {
+        return {
+          success: false,
+          error: resData?.message || resData?.error || 'Failed to register user. Please check details.',
+        };
+      }
+
+      // Dynamically refresh accounts from server database so the newly registered user appears immediately
+      await refreshAccountsFromServer();
+
+      return {
+        success: true,
+        account: resData.account,
+      };
+    } catch (err: unknown) {
+      console.error('Owner user registration error:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Network error registering user. Please try again.',
+      };
+    }
+  };
+
   // 2. Login User Account (Strict authentication and user data isolation)
   const loginUser = async (credentials: {
     identifier: string;
@@ -1635,14 +1694,28 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
           verificationStatus: account.verificationStatus || 'account_active',
           accountData: authoritativeAccount,
         };
-      } else if (serverRes.status === 401 || serverRes.status === 404 || (serverData && !serverData.success)) {
+      } else if (serverData && serverData.message) {
         return {
           success: false,
-          error: serverData?.message || 'Incorrect login password. Please check and try again.',
+          error: serverData.message,
+        };
+      } else if (serverRes.status === 404) {
+        return {
+          success: false,
+          error: 'Account not found. Please contact the owner to register your account.',
+        };
+      } else if (serverRes.status === 401) {
+        return {
+          success: false,
+          error: 'Incorrect login password. Please check your credentials and try again.',
         };
       }
     } catch (e) {
       console.error('Server login error:', e);
+      return {
+        success: false,
+        error: 'Network connection issue. Please check your connection and try again.',
+      };
     }
 
     return {
@@ -1920,7 +1993,10 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
   // 4D. Refresh Accounts from Server without losing custom PINs
   const refreshAccountsFromServer = async () => {
     try {
-      const res = await fetch('/api/accounts');
+      const token = localStorage.getItem('opay_session_token');
+      const res = await fetch('/api/accounts', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.accounts)) {
@@ -1945,6 +2021,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
               map.set(s.id, {
                 ...(existing || {}),
                 ...s,
+                balanceNgn: typeof s.balanceNgn === 'number' ? s.balanceNgn : (existing?.balanceNgn ?? 0),
                 customPin: localPin || existing?.customPin || s.customPin,
                 transactionPinHash: localHash || existing?.transactionPinHash || s.transactionPinHash,
                 pinSalt: localSalt || existing?.pinSalt || s.pinSalt,
@@ -3645,6 +3722,7 @@ export const DemoWalletProvider: React.FC<{ children: ReactNode }> = ({ children
         smsLogs,
         lastSentSms,
         registerUser,
+        registerUserByOwner,
         loginUser,
         logoutUser,
         clearRememberedAccount,

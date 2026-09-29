@@ -50,9 +50,9 @@ export const OPayApp: React.FC = () => {
 
   // Auth Modal State
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'welcome_back'>('login');
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'welcome_back'>('login');
 
-  const requireAuth = (action: () => void, mode: 'login' | 'register' | 'welcome_back' = 'login') => {
+  const requireAuth = (action: () => void, mode: 'login' | 'welcome_back' = 'login') => {
     if (!isAuthenticated) {
       setAuthModalMode(mode);
       setShowAuthModal(true);
@@ -140,10 +140,6 @@ export const OPayApp: React.FC = () => {
             <OPayPromos
               onSavingsClick={() => requireAuth(() => setActiveService('Safebox'))}
               onInviteClick={() => requireAuth(() => setActiveService('Refer & Earn'))}
-              onSignUpClick={() => {
-                setAuthModalMode('register');
-                setShowAuthModal(true);
-              }}
             />
           </div>
         )}
@@ -213,19 +209,12 @@ export const OPayApp: React.FC = () => {
         <OPayProfileModal onClose={() => setShowProfile(false)} />
       )}
 
-      {/* Auth Screen Modal (Login / Register) */}
+      {/* Auth Screen Modal (Login Only) */}
       {showAuthModal && (
         <OPayAuthScreen
           initialMode={authModalMode}
           onLogin={async (creds) => {
             const res = await loginUser(creds);
-            if (res.success) {
-              setShowAuthModal(false);
-            }
-            return res;
-          }}
-          onRegister={async (data) => {
-            const res = await registerUser(data);
             if (res.success) {
               setShowAuthModal(false);
             }

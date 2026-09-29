@@ -34,14 +34,18 @@ export function normalizePhone(raw: string): NormalizedPhone {
   const digits = raw.replace(/\D/g, '');
   let subscriber = '';
 
-  if (digits.startsWith('234') && digits.length >= 13) {
-    subscriber = digits.slice(3, 13);
-  } else if (digits.startsWith('0') && digits.length === 11) {
-    subscriber = digits.slice(1);
-  } else if (digits.length === 10) {
-    subscriber = digits;
-  } else if (digits.length > 10) {
-    subscriber = digits.slice(-10);
+  // In Nigeria, mobile subscriber numbers are always 10 digits starting with 7, 8, or 9
+  if (digits.length >= 10) {
+    const last10 = digits.slice(-10);
+    if (/^[789]\d{9}$/.test(last10)) {
+      subscriber = last10;
+    } else if (digits.startsWith('0') && digits.length === 11) {
+      subscriber = digits.slice(1);
+    } else if (digits.startsWith('234') && digits.length >= 13) {
+      subscriber = digits.slice(3, 13);
+    } else {
+      subscriber = last10;
+    }
   } else {
     subscriber = digits;
   }
