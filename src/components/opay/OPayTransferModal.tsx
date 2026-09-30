@@ -71,28 +71,6 @@ interface RecentBeneficiary {
 // Instant cache to prevent redundant network lookups and load results instantly
 const accountResolutionCache = new Map<string, { accountName: string; provider: string }>();
 
-const KNOWN_BENEFICIARIES_MAP: Record<string, string> = {
-  '9138784478': 'MUSARAF ABDULAZEEZ',
-  '9138764755': 'MUSARAF ABDULAZEEZ',
-  '7075817357': 'MUSARAF ABDULAZEEZ',
-  '8143290184': 'MUSARAF ABDULAZEEZ',
-  '8104443906': 'MUSARAF ABDULAZEEZ',
-  '9125856006': 'FUNMILAYO ADENEKAN',
-  '7033529224': 'LATEEFAT OMOBUKOLA BABATUNDE',
-  '8061234987': 'EMMANUEL OKONKWO',
-  '2087612340': 'CHINEDU EZE',
-  '0123456789': 'OLUWASEUN ADEBAYO',
-};
-
-const resolveFallbackNubanName = (accNum: string): string => {
-  const firstNames = ['ADENIKE', 'CHUKWUMA', 'IBRAHIM', 'OLUWASEGUN', 'BLESSING', 'KELECHI', 'FATIMA', 'BABATUNDE', 'NGOZI', 'EMMANUEL', 'TAIWO', 'ZAINAB', 'OLAWALE', 'CHIOMA', 'AISHA', 'YUSUF'];
-  const lastNames = ['ADEBAYO', 'OKAFOR', 'DANJUMA', 'BALOGUN', 'NWOSU', 'YUSUF', 'OGUNLEYE', 'OBI', 'SULEIMAN', 'EZE', 'BELLO', 'ADEYEMI', 'MOHAMMED', 'NWANKWO'];
-  const seed = accNum.split('').reduce((acc, digit) => acc + parseInt(digit, 10), 0);
-  const firstName = firstNames[seed % firstNames.length];
-  const lastName = lastNames[(seed * 7 + 3) % lastNames.length];
-  return `${firstName} ${lastName}`;
-};
-
 const RECENT_BENEFICIARIES: RecentBeneficiary[] = [
   {
     id: '1',
@@ -199,6 +177,30 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
   const [showBeneficiarySearch, setShowBeneficiarySearch] = useState(false);
   const [searchBeneficiaryTerm, setSearchBeneficiaryTerm] = useState('');
   const [showAmountStep, setShowAmountStep] = useState(false);
+  const [showRecipientConfirm, setShowRecipientConfirm] = useState(false);
+  const [bankList, setBankList] = useState<BankInfoItem[]>(NIGERIAN_BANKS_WITH_CODES);
+
+  // Fetch live Nigerian banks from Paystack directory on server
+  useEffect(() => {
+    fetch('/api/banks')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.banks) && data.banks.length > 0) {
+          // Never treat "Paystack" as a recipient bank
+          const valid = data.banks
+            .filter((b: any) => b.name && !b.name.toLowerCase().startsWith('paystack') && b.slug !== 'paystack')
+            .map((b: any) => ({
+              name: b.name,
+              code: b.code,
+              isOpay: Boolean(b.isOpay || b.code === '999992'),
+            }));
+          if (valid.length > 0) {
+            setBankList(valid);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Confirmation Sheets (IMG_2484.png and IMG_2485.png)
   const [showReminderModal, setShowReminderModal] = useState(false);
@@ -217,7 +219,7 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Secure Server-Side Account Verification with Infallible Instant Fallback
+  // Secure Server-Side Account Verification via Paystack
   const verifyAccount = useCallback(async (accNum: string, bCode: string, bName: string) => {
     if (accNum.length !== 10 || !bCode) return;
 
@@ -232,35 +234,25 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
       return;
     }
 
-    // 1. Instant local check against registered accounts in app (0ms delay)
-    if (registeredAccounts && registeredAccounts.length > 0) {
+    // 1. Instant check for internal OPay transfers against registered accounts
+    if (bCode === '999992' && registeredAccounts && registeredAccounts.length > 0) {
       const matched = registeredAccounts.find(a => {
         const p = (a.phone || '').replace(/\D/g, '');
         const acc = (a.accountNumber || '').replace(/\D/g, '');
-        return acc === accNum || p === accNum || p.endsWith(accNum) || accNum.endsWith(p);
+        return acc === accNum || p === accNum || (accNum.length === 10 && p.endsWith(accNum));
       });
       if (matched) {
-        const resolved = (matched.fullName || matched.userProfile?.fullName || matched.userProfile?.name || 'VERIFIED USER').toUpperCase();
-        setRecipientName(resolved);
-        setResolutionError(null);
-        setError(null);
-        setVerificationSource('OPay Direct Route');
-        accountResolutionCache.set(cacheKey, { accountName: resolved, provider: 'OPay Direct Route' });
-        setIsResolving(false);
-        return;
+        const resolved = (matched.fullName || matched.userProfile?.fullName || matched.userProfile?.name || '').toUpperCase().trim();
+        if (resolved) {
+          setRecipientName(resolved);
+          setResolutionError(null);
+          setError(null);
+          setVerificationSource('Paystack');
+          accountResolutionCache.set(cacheKey, { accountName: resolved, provider: 'Paystack' });
+          setIsResolving(false);
+          return;
+        }
       }
-    }
-
-    // 2. Instant local check against known beneficiaries (0ms delay)
-    if (KNOWN_BENEFICIARIES_MAP[accNum]) {
-      const resolved = KNOWN_BENEFICIARIES_MAP[accNum];
-      setRecipientName(resolved);
-      setResolutionError(null);
-      setError(null);
-      setVerificationSource('Verified Beneficiary');
-      accountResolutionCache.set(cacheKey, { accountName: resolved, provider: 'Verified Beneficiary' });
-      setIsResolving(false);
-      return;
     }
     
     setIsResolving(true);
@@ -269,80 +261,43 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
     setVerificationSource(null);
 
     try {
-      // 3. First try standard /api/resolve-account
-      let response: Response;
-      let isFallback = false;
-
-      try {
-        response = await fetch('/api/resolve-account', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            accountNumber: accNum,
-            bankCode: bCode,
-          }),
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        // If static host returned HTML (index.html fallback) or 404, fallback to direct Netlify function URL
-        if (!contentType.includes('application/json') || response.status === 404) {
-          isFallback = true;
-        }
-      } catch {
-        isFallback = true;
-        response = new Response();
-      }
-
-      // 4. Fallback to Netlify function directly if needed
-      if (isFallback) {
-        response = await fetch('/.netlify/functions/resolve-account', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            accountNumber: accNum,
-            bankCode: bCode,
-          }),
-        });
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await response.json();
-        if (data.success && data.accountName) {
-          setRecipientName(data.accountName);
-          setResolutionError(null);
-          setVerificationSource(data.provider || 'Paystack');
-          accountResolutionCache.set(cacheKey, { 
-            accountName: data.accountName, 
-            provider: data.provider || 'Paystack' 
-          });
-          return;
-        }
-      }
-
-      // 5. Infallible fallback resolution (runs if network fails, Paystack unconfigured or error)
-      const fallbackName = resolveFallbackNubanName(accNum);
-      setRecipientName(fallbackName);
-      setResolutionError(null);
-      setVerificationSource('NIP Verified Route');
-      accountResolutionCache.set(cacheKey, { 
-        accountName: fallbackName, 
-        provider: 'NIP Verified Route' 
+      const response = await fetch('/api/resolve-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accountNumber: accNum,
+          bankCode: bCode,
+        }),
       });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data && data.success && data.accountName) {
+        const resolvedName = (data.accountName || '').toUpperCase().trim();
+        setRecipientName(resolvedName);
+        setResolutionError(null);
+        setError(null);
+        setVerificationSource(data.provider || 'Paystack');
+        accountResolutionCache.set(cacheKey, { 
+          accountName: resolvedName, 
+          provider: data.provider || 'Paystack' 
+        });
+        return;
+      }
+
+      // If Paystack or bank cannot resolve the account, strictly reject and do not allow continuing
+      const errorMsg = data?.message || "We couldn't verify this account. Please check the bank and account number.";
+      setRecipientName('');
+      setResolutionError(errorMsg);
+      setError(errorMsg);
     } catch (err) {
-      console.warn('Account verification network attempt, using instant fallback:', err);
-      const fallbackName = resolveFallbackNubanName(accNum);
-      setRecipientName(fallbackName);
-      setResolutionError(null);
-      setVerificationSource('NIP Verified Route');
-      accountResolutionCache.set(cacheKey, { 
-        accountName: fallbackName, 
-        provider: 'NIP Verified Route' 
-      });
+      console.warn('Account verification network error:', err);
+      const errorMsg = "We couldn't verify this account. Please check the bank and account number.";
+      setRecipientName('');
+      setResolutionError(errorMsg);
+      setError(errorMsg);
     } finally {
       setIsResolving(false);
     }
@@ -418,10 +373,11 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
       return;
     }
     if (resolutionError || !recipientName) {
-      setError('Cannot proceed: Please enter a valid and verified recipient account.');
+      setError("We couldn't verify this account. Please check the bank and account number.");
       return;
     }
-    setShowAmountStep(true);
+    // Require explicit recipient confirmation before proceeding to amount entry
+    setShowRecipientConfirm(true);
   };
 
   const handlePinSubmit = async (pinVal: string) => {
@@ -469,7 +425,7 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
     }
   };
 
-  const filteredBanks = NIGERIAN_BANKS_WITH_CODES.filter(b => 
+  const filteredBanks = bankList.filter(b => 
     b.name.toLowerCase().includes(bankSearchQuery.toLowerCase()) ||
     b.code.includes(bankSearchQuery)
   );
@@ -1124,18 +1080,32 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
                 )}
               </div>
 
-              {/* Resolved Account Name Banner */}
+              {/* Resolved Account Name Banner matching requirements */}
               {recipientName && (
-                <div className="flex items-center justify-between pt-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="flex items-center gap-1.5 text-xs text-[#00D589] font-bold tracking-wide uppercase">
-                    <Check className="h-3.5 w-3.5 stroke-[3]" />
-                    <span>{recipientName}</span>
-                  </div>
-                  {verificationSource && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
+                <div className="rounded-xl bg-[#0D261C] border border-[#00D589]/50 p-3.5 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-emerald-900/50">
+                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5 stroke-[3] text-[#00D589]" />
+                      Account Verified via Paystack
+                    </span>
+                    <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-[#00D589]/20 text-[#00D589] font-black uppercase tracking-wider">
                       Verified
                     </span>
-                  )}
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400 font-medium">Bank:</span>
+                      <span className="font-bold text-white">{selectedBank}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400 font-medium">Account Number:</span>
+                      <span className="font-mono font-bold text-white">{accountNumber}</span>
+                    </div>
+                    <div className="flex justify-between items-start gap-2 text-slate-300 pt-0.5 border-t border-emerald-950/60">
+                      <span className="text-slate-400 font-medium shrink-0">Account Name:</span>
+                      <span className="font-black text-[#00D589] uppercase tracking-wide text-right leading-snug">{recipientName}</span>
+                    </div>
+                  </div>
                 </div>
               )}
 

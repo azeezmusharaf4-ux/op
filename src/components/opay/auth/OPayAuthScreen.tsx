@@ -63,6 +63,7 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     isManuallyLoggedOut, 
     registeredAccounts,
     setRememberedAccount,
+    clearRememberedAccount,
     updateAccountPasswordInClient,
     refreshAccountsFromServer
   } = useDemoWallet();
@@ -151,13 +152,20 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
           pDigits === clean ||
           (clean.length === 10 && pDigits.endsWith(clean)) ||
           (clean.length === 11 && clean.endsWith(pDigits)) ||
-          accDigits === clean
+          accDigits === clean ||
+          ((acc.id === 'acc-musaraf-default' || acc.role === 'owner') &&
+           (clean.endsWith('7075817357') || clean.endsWith('8104443906')))
         );
       });
       if (found) return found;
     }
     if (loginIdentifier.trim().includes('@')) {
-      const found = registeredAccounts.find(acc => acc.email.toLowerCase() === loginIdentifier.trim().toLowerCase());
+      const cleanEmail = loginIdentifier.trim().toLowerCase();
+      const found = registeredAccounts.find(acc => 
+        acc.email.toLowerCase() === cleanEmail ||
+        ((acc.id === 'acc-musaraf-default' || acc.role === 'owner') &&
+         (cleanEmail === 'moriobee44@gmail.com' || cleanEmail === 'musaraf.olawale@gmail.com'))
+      );
       if (found) return found;
     }
     return null;
@@ -382,8 +390,9 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     if (e) e.preventDefault();
     setLoginError(null);
 
-    if (!welcomePassword) {
-      setLoginError('Please enter your login password.');
+    const cleanPass = welcomePassword.trim();
+    if (!cleanPass) {
+      setLoginError('Please enter your 6-digit login password.');
       return;
     }
 
@@ -399,7 +408,7 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
     try {
       const result = await onLogin({
         identifier,
-        pinOrPass: welcomePassword,
+        pinOrPass: cleanPass,
       });
 
       if (result.success && result.requiresPermanentPasswordReset) {
@@ -417,10 +426,10 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
       }
 
       if (!result.success) {
-        setLoginError(result.error || 'Incorrect login password. Please try again.');
+        setLoginError(result.error || 'Incorrect login password. Please check your credentials and try again.');
       }
     } catch (err: unknown) {
-      setLoginError(err instanceof Error ? err.message : 'Login failed. Please try again.');
+      setLoginError(err instanceof Error ? err.message : 'Login failed. Please check your credentials and try again.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -456,9 +465,10 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
         setRememberedAccount(data.accountId);
       }
       setLoginIdentifier(data.phone || cleanId);
-      // Advance to password entry on "Welcome back!" screen
+      setWelcomePassword('');
+      // Advance to password entry on "Welcome back!" screen with keypad ready
       setActiveMode('welcome_back');
-      setIsKeypadVisible(false);
+      setIsKeypadVisible(true);
     } catch (err: unknown) {
       const found = registeredAccounts.find(a => isSamePhone(a.phone, cleanId) || a.accountNumber === cleanId || a.email.toLowerCase() === cleanId.toLowerCase());
       if (!found) {
@@ -466,8 +476,9 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
         return;
       }
       if (found.id) setRememberedAccount(found.id);
+      setWelcomePassword('');
       setActiveMode('welcome_back');
-      setIsKeypadVisible(false);
+      setIsKeypadVisible(true);
     } finally {
       setIsLoggingIn(false);
     }
@@ -662,12 +673,20 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
                       }`}
                     >
                       <input
+                        id="welcome-password-input"
                         type={showWelcomePassword ? 'text' : 'password'}
-                        readOnly
-                        inputMode="none"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
                         value={welcomePassword}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                          setWelcomePassword(val);
+                          setLoginError(null);
+                        }}
+                        onFocus={() => setIsKeypadVisible(true)}
                         placeholder="Enter 6-digit Password"
-                        className="w-full bg-transparent py-3.5 px-4 text-base text-white placeholder-slate-500 focus:outline-none font-mono tracking-widest cursor-pointer select-none"
+                        className="w-full bg-transparent py-3.5 px-4 text-base text-white placeholder-slate-500 focus:outline-none font-mono tracking-widest cursor-text"
                       />
                       <button
                         type="button"
@@ -687,6 +706,12 @@ export const OPayAuthScreen: React.FC<OPayAuthScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          clearRememberedAccount();
+                          setLoginIdentifier('');
+                          setWelcomePassword('');
+                          setLoginPassword('');
+                          setLoginError(null);
+                          setLoginStep(1);
                           setActiveMode('full_login');
                           setIsKeypadVisible(false);
                         }}

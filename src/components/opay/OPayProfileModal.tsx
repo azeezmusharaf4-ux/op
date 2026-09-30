@@ -336,8 +336,8 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
       setRegError('Please enter a valid Nigerian phone number (e.g. 08012345678).');
       return;
     }
-    if (!cleanPass || cleanPass.length < 6) {
-      setRegError('Login password must be at least 6 characters or digits.');
+    if (!cleanPass || cleanPass.length !== 6 || !/^\d{6}$/.test(cleanPass)) {
+      setRegError('Login password must be exactly 6 numeric digits (e.g. 123456).');
       return;
     }
     if (!cleanPin || !/^\d{4}$/.test(cleanPin)) {
@@ -2010,17 +2010,19 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                    Login Password <span className="text-[#00D589]">*</span> (6 digits or chars)
+                    Login Password <span className="text-[#00D589]">*</span> (6 numeric digits)
                   </label>
                   <div className="relative flex items-center">
                     <input
                       type={regShowPassword ? 'text' : 'password'}
                       required
-                      maxLength={12}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
                       value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
+                      onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       placeholder="e.g. 123456"
-                      className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 pr-9 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono"
+                      className="w-full rounded-xl bg-[#121419] px-3.5 py-2.5 pr-9 text-xs text-white border border-slate-700 focus:border-[#00D589] focus:outline-none font-mono tracking-widest"
                     />
                     <button
                       type="button"

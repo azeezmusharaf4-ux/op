@@ -142,12 +142,27 @@ async function startServer() {
       if (PaystackService.isConfigured()) {
         const liveBanks = await PaystackService.listBanks();
         if (liveBanks.length > 0) {
-          const formatted = liveBanks.map(b => ({
+          // Never treat "Paystack" as a recipient bank
+          const validBanks = liveBanks.filter(b => 
+            b.name && 
+            !b.name.toLowerCase().startsWith('paystack') && 
+            b.slug !== 'paystack'
+          );
+
+          const formatted = validBanks.map(b => ({
             name: b.name,
             code: b.code,
             slug: b.slug,
             isOpay: b.name.toLowerCase().includes('opay') || b.code === '999992',
           }));
+
+          // Sort so popular banks (OPay, GTBank, Access, Zenith, Kuda, PalmPay, UBA, First Bank) are prominent
+          formatted.sort((a, b) => {
+            if (a.isOpay) return -1;
+            if (b.isOpay) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
           res.json({
             success: true,
             banks: formatted,
@@ -206,99 +221,65 @@ async function startServer() {
       const bank = NIGERIAN_BANKS.find(
         b => b.code === bankCode || b.name.toLowerCase() === bankCode.toLowerCase()
       );
-      const resolvedBankName = bank ? bank.name : 'Commercial Bank';
+      const resolvedBankName = bank ? bank.name : 'Nigerian Commercial Bank';
 
-      // 3A. If PAYSTACK_SECRET_KEY is configured in server environment, attempt live Paystack resolution
-      if (PaystackService.isConfigured()) {
-        try {
-          const paystackResult = await PaystackService.resolveAccount(cleanAccount, bankCode);
-          if (paystackResult.success && paystackResult.accountName) {
+      // 3A. For internal OPay accounts (bankCode 999992), check registered users in database first
+      if (bankCode === '999992' || bankCode.toLowerCase().includes('opay')) {
+        const allRegistered = serverDb.getAccounts();
+        const matchedUser = allRegistered.find(a => {
+          const p = a.phone.replace(/\D/g, '');
+          const acc = (a.accountNumber || '').replace(/\D/g, '');
+          return acc === cleanAccount || p === cleanAccount || (cleanAccount.length === 10 && p.endsWith(cleanAccount));
+        });
+
+        if (matchedUser) {
+          const name = (matchedUser.fullName || matchedUser.userProfile?.fullName || matchedUser.userProfile?.name || '').toUpperCase().trim();
+          if (name) {
             res.json({
               success: true,
-              accountNumber: paystackResult.accountNumber || cleanAccount,
-              accountName: paystackResult.accountName,
-              bankName: resolvedBankName,
+              accountNumber: cleanAccount,
+              accountName: name,
+              bankName: 'OPay (Paycom)',
+              bankCode: '999992',
               provider: 'Paystack',
             });
             return;
           }
-          // If Paystack fails (e.g. Starter Business unactivated transfers or invalid bank code),
-          // DO NOT error out with 422! Gracefully fall through to verified registered users and directory resolvers.
-        } catch (paystackErr) {
-          console.warn('Paystack live resolution bypassed due to upstream error:', paystackErr);
         }
       }
 
-      // 3B. Check registered system accounts in database
-      const allRegistered = serverDb.getAccounts();
-      const matchedUser = allRegistered.find(a => {
-        const p = a.phone.replace(/\D/g, '');
-        const acc = (a.accountNumber || '').replace(/\D/g, '');
-        return acc === cleanAccount || p === cleanAccount || p.endsWith(cleanAccount) || cleanAccount.endsWith(p);
-      });
+      // 3B. Live Paystack account verification using bank code + account number
+      if (PaystackService.isConfigured()) {
+        const paystackResult = await PaystackService.resolveAccount(cleanAccount, bankCode);
+        if (paystackResult.success && paystackResult.accountName) {
+          res.json({
+            success: true,
+            accountNumber: paystackResult.accountNumber || cleanAccount,
+            accountName: paystackResult.accountName,
+            bankName: resolvedBankName,
+            bankCode,
+            provider: 'Paystack',
+          });
+          return;
+        }
 
-      if (matchedUser) {
-        const name = (matchedUser.fullName || matchedUser.userProfile?.fullName || matchedUser.userProfile?.name || 'VERIFIED USER').toUpperCase();
-        res.json({
-          success: true,
-          accountNumber: cleanAccount,
-          accountName: name,
-          bankName: resolvedBankName,
-          provider: 'OPay Direct Route',
-        });
-        return;
-      }
-
-      // 3C. Check known beneficiary matches
-      if (KNOWN_BENEFICIARIES[cleanAccount]) {
-        res.json({
-          success: true,
-          accountNumber: cleanAccount,
-          accountName: KNOWN_BENEFICIARIES[cleanAccount],
-          bankName: resolvedBankName,
-          provider: 'Verified Directory',
-        });
-        return;
-      }
-
-      // Reject invalid patterns like all identical digits
-      if (/^(\d)\1{9}$/.test(cleanAccount) && cleanAccount !== '0000000000') {
+        // Account could not be resolved by Paystack
         res.status(422).json({
           success: false,
-          message: 'Invalid account number. The recipient bank could not find this account.',
+          message: "We couldn't verify this account. Please check the bank and account number.",
         });
         return;
       }
 
-      if (cleanAccount.startsWith('0000')) {
-        res.status(422).json({
-          success: false,
-          message: 'Invalid NUBAN account number format.',
-        });
-        return;
-      }
-
-      // 3D. Deterministic NUBAN resolution for testing valid 10-digit NUBAN numbers
-      const firstNames = ['ADENIKE', 'CHUKWUMA', 'IBRAHIM', 'OLUWASEGUN', 'BLESSING', 'KELECHI', 'FATIMA', 'BABATUNDE', 'NGOZI', 'EMMANUEL', 'TAIWO', 'ZAINAB', 'OLAWALE', 'CHIOMA', 'AISHA', 'YUSUF'];
-      const lastNames = ['ADEBAYO', 'OKAFOR', 'DANJUMA', 'BALOGUN', 'NWOSU', 'YUSUF', 'OGUNLEYE', 'OBI', 'SULEIMAN', 'EZE', 'BELLO', 'ADEYEMI', 'MOHAMMED', 'NWANKWO'];
-      
-      const seed = cleanAccount.split('').reduce((acc, digit) => acc + parseInt(digit, 10), 0);
-      const firstName = firstNames[seed % firstNames.length];
-      const lastName = lastNames[(seed * 7 + 3) % lastNames.length];
-      const resolvedName = `${firstName} ${lastName}`;
-
-      res.json({
-        success: true,
-        accountNumber: cleanAccount,
-        accountName: resolvedName,
-        bankName: resolvedBankName,
-        provider: 'NIP / NIBSS Verified',
+      res.status(503).json({
+        success: false,
+        message: "Paystack service is not configured. Unable to verify bank accounts.",
       });
     } catch (err: unknown) {
       console.error('Account resolution error:', err);
       res.status(500).json({
         success: false,
-        message: 'An error occurred while verifying the account. Please try again.',
+        message: "We couldn't verify this account. Please check the bank and account number.",
       });
     }
   });
@@ -1279,6 +1260,33 @@ async function startServer() {
   app.post('/api/admin/register-user', handleOwnerRegisterUser);
   app.post('/api/admin/accounts/register', handleOwnerRegisterUser);
 
+  // Switch account endpoint for authenticated owner to switch seamlessly between accounts
+  app.post('/api/admin/switch-account', (req, res) => {
+    try {
+      const authUser = getAuthenticatedUser(req);
+      const isOwner = authUser && isOwnerAdminAccount(authUser.id, authUser.phone, authUser.email, authUser.fullName);
+      if (!authUser || !isOwner) {
+        res.status(403).json({ success: false, message: 'Only authorized owner can switch accounts.' });
+        return;
+      }
+      const { targetAccountId } = req.body;
+      const target = serverDb.getAccount(targetAccountId) || serverDb.findAccountByIdentifier(targetAccountId);
+      if (!target) {
+        res.status(404).json({ success: false, message: 'Target account not found.' });
+        return;
+      }
+      const sessionToken = serverDb.createSession(target.id);
+      const sanitized = { ...target };
+      delete sanitized.password;
+      delete sanitized.customPin;
+      sanitized.transactions = serverDb.getUserTransactions(target.id);
+      res.json({ success: true, token: sessionToken, account: sanitized });
+    } catch (err: unknown) {
+      console.error('Switch account error:', err);
+      res.status(500).json({ success: false, message: 'Failed to switch account.' });
+    }
+  });
+
   // Disable public registration route - only authorized owner allowed
   app.post('/api/auth/register', (req, res) => {
     const authUser = getAuthenticatedUser(req);
@@ -1325,26 +1333,34 @@ async function startServer() {
         return;
       }
 
-      const salt = account.passwordSalt || account.pinSalt || HASH_SALT_DEFAULT;
+      const salt = account.passwordSalt || account.pinSalt || 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026';
       const inputHash = computeHash(cleanPass, salt);
 
       // 1. Check Permanent Password match across all supported salt configurations
-      // IMPORTANT: Login password is strictly tied to this account and will NOT be overwritten on login!
-      const isPermanentMatch = 
+      // IMPORTANT: Login password is strictly tied to this canonical account and will NOT be overwritten on login!
+      const isOwner = Boolean(
+        account.id === 'acc-musaraf-default' || 
+        account.phone.includes('7075817357') || 
+        isOwnerAdminAccount(account.id, account.phone, account.email, account.fullName)
+      );
+
+      const isPermanentMatch = Boolean(
         account.loginPasswordHash === inputHash ||
         (Boolean(account.passwordSalt) && computeHash(cleanPass, account.passwordSalt!) === account.loginPasswordHash) ||
         (Boolean(account.pinSalt) && computeHash(cleanPass, account.pinSalt!) === account.loginPasswordHash) ||
         computeHash(cleanPass, HASH_SALT_DEFAULT) === account.loginPasswordHash ||
         computeHash(cleanPass, 'OPAY_SECURE_SALT_2026_PRODUCTION') === account.loginPasswordHash ||
+        computeHash(cleanPass, 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026') === account.loginPasswordHash ||
         crypto.createHash('sha256').update(cleanPass).digest('hex') === account.loginPasswordHash ||
-        (Boolean(account.password) && account.password === cleanPass) ||
-        // Master account initial seed check if not yet changed
-        ((account.id === 'acc-musaraf-default' || account.phone.includes('7075817357')) && 
-         (account.loginPasswordHash === 'b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561' || !account.loginPasswordHash) &&
-         cleanPass === '123456');
+        (Boolean(account.password) && account.password === cleanPass)
+      );
 
       if (isPermanentMatch) {
-        // Clear any temporary password flags without altering the user's permanent password!
+        // Automatically sync and heal canonical password hash if needed
+        if (account.loginPasswordHash !== inputHash) {
+          account.loginPasswordHash = inputHash;
+          account.passwordSalt = salt;
+        }
         delete account.password;
         delete account.customPin;
         account.lastLoginAt = Date.now();

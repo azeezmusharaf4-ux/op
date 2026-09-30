@@ -53,6 +53,8 @@ export interface PaystackTransferResult {
 
 export class PaystackService {
   private static resolveCache = new Map<string, PaystackResolveResult>();
+  private static cachedBanks: PaystackBank[] | null = null;
+  private static banksCacheTime = 0;
 
   private static getSecretKey(): string | null {
     const key = process.env.PAYSTACK_SECRET_KEY?.trim();
@@ -113,7 +115,7 @@ export class PaystackService {
 
       const data = await response.json();
 
-      if (response.ok && data.status && data.data) {
+      if (response.ok && data.status && data.data && data.data.account_name) {
         const result: PaystackResolveResult = {
           success: true,
           accountNumber: data.data.account_number || cleanAccount,
@@ -126,40 +128,47 @@ export class PaystackService {
 
       return {
         success: false,
-        message: data.message || 'Could not resolve account with Paystack.',
+        message: data.message || "We couldn't verify this account. Please check the bank and account number.",
       };
     } catch (err: unknown) {
       console.error('Paystack resolve account error:', err);
       return {
         success: false,
-        message: err instanceof Error ? err.message : 'Network error communicating with Paystack.',
+        message: "We couldn't verify this account. Please check the bank and account number.",
       };
     }
   }
 
   /**
-   * Fetch all Nigerian banks from Paystack
+   * Fetch all Nigerian banks from Paystack with in-memory caching
    */
   public static async listBanks(): Promise<PaystackBank[]> {
+    const now = Date.now();
+    if (this.cachedBanks && this.cachedBanks.length > 0 && now - this.banksCacheTime < 3600000) {
+      return this.cachedBanks;
+    }
+
     const secret = this.getSecretKey();
     if (!secret) {
       return [];
     }
 
     try {
-      const response = await fetch('https://api.paystack.co/bank?country=nigeria&perPage=100', {
+      const response = await fetch('https://api.paystack.co/bank?country=nigeria&perPage=300', {
         method: 'GET',
         headers: this.getHeaders(),
       });
 
       const data = await response.json();
       if (response.ok && data.status && Array.isArray(data.data)) {
+        this.cachedBanks = data.data;
+        this.banksCacheTime = now;
         return data.data;
       }
-      return [];
+      return this.cachedBanks || [];
     } catch (err) {
       console.error('Paystack list banks error:', err);
-      return [];
+      return this.cachedBanks || [];
     }
   }
 

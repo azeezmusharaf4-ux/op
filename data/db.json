@@ -6,9 +6,9 @@
       "phone": "07075817357",
       "email": "moriobee44@gmail.com",
       "ninMasked": "•••••••4821",
-      "loginPasswordHash": "3b584ed3f08e4b1bbaf177691d135e7d483c8b8cf4a40605d4b7690635353a8f",
-      "transactionPinHash": "bbfa25cf25fd259c565ee16a96bea148c5842292e244cd641c68268a40130841",
-      "pinSalt": "1790682437233_chyk33105ff",
+      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
+      "transactionPinHash": "dcdc377448b1b0cddbb89d192fea3f2acd477fdfd53d9e52fa8e5e021c7234cc",
+      "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
       "pinLockoutUntil": null,
       "verificationStatus": "account_active",
@@ -711,7 +711,7 @@
           "lastUsedAt": 1790682478050
         }
       ],
-      "lastLoginAt": 1790683886966
+      "lastLoginAt": 1790765830918
     },
     {
       "id": "acc-lateefat-user-b",
@@ -719,7 +719,7 @@
       "phone": "07033529224",
       "email": "lateefat.omobukola@gmail.com",
       "ninMasked": "•••••••7192",
-      "loginPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
       "transactionPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
       "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
@@ -850,7 +850,8 @@
       ],
       "normalizedPhone": "07033529224",
       "accountStatus": "active",
-      "recentRecipients": []
+      "recentRecipients": [],
+      "passwordSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026"
     },
     {
       "id": "acc-funmilayo-user-c",
@@ -858,7 +859,7 @@
       "phone": "09125856006",
       "email": "funmilayo.adenekan@gmail.com",
       "ninMasked": "•••••••5531",
-      "loginPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
       "transactionPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
       "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
@@ -977,7 +978,8 @@
       "notifications": [],
       "normalizedPhone": "09125856006",
       "accountStatus": "active",
-      "recentRecipients": []
+      "recentRecipients": [],
+      "passwordSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026"
     },
     {
       "id": "acc-8055566778-mummya2v",
@@ -987,10 +989,10 @@
       "email": "08055566778@opay.ng",
       "role": "user",
       "ninMasked": "•••••••6778",
-      "loginPasswordHash": "3dae702eb6eeef7dd6e4112fb01dfe1dcf7fb7c04892ce063b2c6ea3685c8504",
-      "passwordSalt": "OPAY_1790683886983_62c3bb21",
-      "transactionPinHash": "167bd96e19da2a14249b950bd01257ee4a96b14816c4dd432e58ad16939c61af",
-      "pinSalt": "OPAY_1790683886983_62c3bb21",
+      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
+      "passwordSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
+      "transactionPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+      "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
       "pinLockoutUntil": null,
       "accountStatus": "active",
@@ -1079,6 +1081,107 @@
       ],
       "recentRecipients": [],
       "mustResetPassword": false
+    },
+    {
+      "id": "acc-8012345678-munz58wd",
+      "fullName": "JOHN DOE",
+      "phone": "08012345678",
+      "normalizedPhone": "08012345678",
+      "email": "08012345678@opay.ng",
+      "role": "user",
+      "ninMasked": "•••••••5678",
+      "loginPasswordHash": "93f89ff80ae01034e3998c2a693ee1edfbb4523ad9242dc15ee2b6deb9b3b30b",
+      "passwordSalt": "OPAY_1790764833613_35eb6750",
+      "transactionPinHash": "6acbbfcc48bca9fc816dab271833cc68b1318f5d714a3183a821d67b5b8b2d41",
+      "pinSalt": "1790764847106_ej87rlr2ue4",
+      "failedPinAttempts": 0,
+      "pinLockoutUntil": null,
+      "accountStatus": "active",
+      "lastLoginAt": 1790764851654,
+      "verificationStatus": "account_active",
+      "verificationLog": {
+        "ninVerifiedAt": 1790764833613,
+        "ninMasked": "•••••••5678",
+        "faceVerifiedAt": 1790764833613,
+        "livenessScore": 99.4,
+        "facialMatchScore": 98.2,
+        "auditReference": "OPAY_BIO_OWNER_1790764833613",
+        "provider": "NIMC / OPay Identity Verification Gateway"
+      },
+      "accountNumber": "8012345678",
+      "balanceNgn": 50000,
+      "createdAt": 1790764833613,
+      "userProfile": {
+        "name": "JOHN",
+        "fullName": "JOHN DOE",
+        "phone": "+2348012345678",
+        "accountNumber": "8012345678",
+        "tier": 3,
+        "tierName": "Tier 3 (Verified)",
+        "dailyLimitNgn": 5000000,
+        "singleMaxNgn": 1000000,
+        "avatarUrl": "",
+        "todaySalesNgn": 0,
+        "savingsBalanceNgn": 0,
+        "owealthBalanceNgn": 0,
+        "cashbackPointsNgn": 500,
+        "isKycVerified": true,
+        "email": "08012345678@opay.ng",
+        "bvnLinked": true,
+        "ninLinked": true,
+        "gender": "Verified",
+        "dob": "**-**-**",
+        "nickname": "JOHN",
+        "address": "Lagos, Nigeria"
+      },
+      "transactions": [
+        {
+          "id": "tx-open-1790764833613",
+          "userId": "acc-8012345678-munz58wd",
+          "reference": "OPAYMUNZ58WD",
+          "type": "deposit",
+          "title": "Initial Deposit / Opening Balance",
+          "description": "Account Opening Balance",
+          "amountNgn": 50000,
+          "status": "successful",
+          "timestamp": 1790764833613,
+          "createdTimestamp": 1790764833613,
+          "sender": {
+            "name": "MUSARAF OLAWALE ABDULAZEEZ",
+            "accountOrPhone": "07075817357",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "JOHN DOE",
+            "accountOrPhone": "8012345678",
+            "bankName": "OPay"
+          },
+          "feeNgn": 0,
+          "category": "inflow",
+          "balanceAfterNgn": 50000
+        }
+      ],
+      "cards": [],
+      "safeBoxes": [],
+      "activeLoan": {
+        "loanLimitNgn": 200000,
+        "currentBorrowedNgn": 0,
+        "dueDate": 1793356833613,
+        "dailyInterestPercent": 0.1,
+        "status": "eligible"
+      },
+      "notifications": [
+        {
+          "id": "notif-welcome-1790764833613",
+          "title": "Welcome to OPay 🛡️",
+          "message": "Welcome to OPay, JOHN DOE! Your account (8012345678) is active and ready.",
+          "timestamp": 1790764833613,
+          "read": false,
+          "type": "security"
+        }
+      ],
+      "recentRecipients": [],
+      "mustResetPassword": false
     }
   ],
   "processedBscTxIds": [],
@@ -1110,6 +1213,42 @@
     "f788b1059eb557a3e39d9411c22803d8e85cf11f85f48a9c467666372c89117f": {
       "accountId": "acc-8055566778-mummya2v",
       "createdAt": 1790683886996
+    },
+    "20c21af65b032124b23ae4da38aa6dc58c5878ebc89f4e98dc98b66552101cfa": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790764809746
+    },
+    "d1dbeeeda25828f279393acbd42eb8bb57dece3a497dd8db07829e375e99ff80": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790764833594
+    },
+    "f8cc195a3680051a25d999bea4334682833269b759cbcce465cf6eb5adc5984f": {
+      "accountId": "acc-8012345678-munz58wd",
+      "createdAt": 1790764851655
+    },
+    "4b7d89b01c983ff594f856a22eee03f5f634fa7d1cc3ecb3cedfda00fc6e4935": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790764856797
+    },
+    "9c0009c3c212145bdc41389a414760202397c7f3ed92ffcc310dc7387afadf24": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790765257202
+    },
+    "d9ba7c171196e9952345e4a0338f78257cfdd9b6043462a397861a7b97113170": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790765623736
+    },
+    "77fb4bbf9a9b37e739bcf09a623956e5f25add80cd17290ab8a3ca577d92a9b4": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790765623754
+    },
+    "b0d587a461cbe24ff77e182cefc3d54125bf6ecb08c180aa08b5e1bba849754c": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790765623770
+    },
+    "3f7990b07aec79145f0085612b8ab289dcfca7f1e366d491d0fc3081a0476b26": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790765830919
     }
   }
 }
