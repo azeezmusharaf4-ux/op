@@ -837,7 +837,7 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
                     <span>{recipientName}</span>
                   </div>
                   <button
-                    onClick={() => setShowAmountStep(true)}
+                    onClick={handleNextClick}
                     className="rounded-full bg-[#00D589] px-4 py-1 text-xs font-bold text-[#072418] hover:bg-emerald-300 transition-colors cursor-pointer"
                   >
                     Next
@@ -1501,6 +1501,81 @@ export const OPayTransferModal: React.FC<OPayTransferModalProps> = ({
             >
               Claim Now (₦99)
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* RECIPIENT VERIFICATION & CONFIRMATION MODAL */}
+      {showRecipientConfirm && (
+        <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center bg-black/80 p-0 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-[#1D2027] border border-slate-800 p-5 text-white space-y-4 shadow-2xl animate-in slide-in-from-bottom-3 duration-200">
+            {/* Title */}
+            <div className="text-center space-y-2 pt-1">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#0E3A28] text-[#00D589] border border-emerald-500/30">
+                <ShieldCheck className="h-6 w-6 stroke-[2.2]" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                Confirm Recipient Details
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed max-w-xs mx-auto">
+                Please verify that this is the exact account you wish to transfer funds to before proceeding.
+              </p>
+            </div>
+
+            {/* Resolved Details Box */}
+            <div className="rounded-2xl bg-[#14161C] border border-emerald-500/30 p-4 space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                <span className="text-xs font-semibold text-slate-400">Account Verification</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#00D589]/20 px-2 py-0.5 text-[10px] font-black text-[#00D589] uppercase tracking-wider">
+                  <Check className="h-3 w-3 stroke-[3]" />
+                  Verified via Paystack
+                </span>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                {/* Bank */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-400 font-medium">Bank</span>
+                  <span className="text-white font-bold text-right">{selectedBank}</span>
+                </div>
+
+                {/* Account Number */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-400 font-medium">Account Number</span>
+                  <span className="text-white font-mono font-bold">{accountNumber}</span>
+                </div>
+
+                {/* Account Name */}
+                <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-800/60">
+                  <span className="text-slate-400 font-medium shrink-0">Account Name</span>
+                  <span className="text-[#00D589] font-extrabold uppercase text-right tracking-wide leading-snug">
+                    {recipientName}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRecipientConfirm(false)}
+                className="flex-1 rounded-full bg-[#132A21] border border-[#1C4533] text-[#00D589] font-bold text-sm py-3.5 hover:bg-[#18362B] active:scale-[0.99] transition-all cursor-pointer text-center"
+              >
+                Re-enter
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRecipientConfirm(false);
+                  setShowAmountStep(true);
+                }}
+                className="flex-1 rounded-full bg-[#00D589] text-[#072418] font-extrabold text-sm py-3.5 hover:bg-[#00E599] active:scale-[0.99] transition-all cursor-pointer text-center shadow-md"
+              >
+                Confirm & Proceed
+              </button>
+            </div>
           </div>
         </div>
       )}

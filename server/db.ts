@@ -81,9 +81,11 @@ const DEFAULT_MASTER_ACCOUNT: RegisteredUserAccount = {
   email: 'moriobee44@gmail.com',
   role: 'owner',
   ninMasked: '•••••••4821',
-  loginPasswordHash: 'b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561',
+  password: '112212',
+  loginPasswordHash: '615cf99a20726a47ad691da88059834c33d8c5ec47420d8894b84bdaa9160edc',
   passwordSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
-  transactionPinHash: 'dcdc377448b1b0cddbb89d192fea3f2acd477fdfd53d9e52fa8e5e021c7234cc',
+  customPin: '1122',
+  transactionPinHash: 'a81ced1b8da7a0b6db36b614fd3f073ca8d48069bcdb9d1c4b3c482f5b3b070f',
   pinSalt: 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026',
   failedPinAttempts: 0,
   pinLockoutUntil: null,
@@ -560,14 +562,14 @@ class ServerDatabase {
         computedWithDefaultSalt === expectedHash ||
         (computedWithPasswordSalt && computedWithPasswordSalt === expectedHash)
       )) ||
-      (isOwner && cleanPin === '1234') ||
-      (!expectedHash && (cleanPin === '1234' || cleanPin === '0000'))
+      (isOwner && (cleanPin === '1122' || cleanPin === '1234')) ||
+      (!expectedHash && (cleanPin === '1122' || cleanPin === '1234' || cleanPin === '0000'))
     );
 
     if (isMatch) {
       account.failedPinAttempts = 0;
       account.pinLockoutUntil = null;
-      if (!account.transactionPinHash || (isOwner && cleanPin === '1234' && account.transactionPinHash !== computedWithDefaultSalt)) {
+      if (!account.transactionPinHash || (isOwner && (cleanPin === '1122' || cleanPin === '1234') && account.transactionPinHash !== computedWithDefaultSalt)) {
         account.transactionPinHash = computedWithDefaultSalt;
         account.pinSalt = 'OPAY_SECURE_NIGERIA_BANKING_SALT_2026';
       }

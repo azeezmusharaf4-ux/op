@@ -180,33 +180,13 @@ export const handler = async (event: any) => {
       };
     }
 
-    // Reject all-identical digits
-    if (/^(\d)\1{9}$/.test(cleanAccount) && cleanAccount !== '0000000000') {
-      return {
-        statusCode: 422,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          success: false,
-          message: 'Invalid account number. The recipient bank could not find this account.',
-        }),
-      };
-    }
-
-    // Deterministic simulation for test numbers
-    const firstNames = ['ADENIKE', 'CHUKWUMA', 'IBRAHIM', 'OLUWASEGUN', 'BLESSING', 'KELECHI', 'FATIMA', 'BABATUNDE', 'NGOZI', 'EMMANUEL'];
-    const lastNames = ['ADEBAYO', 'OKAFOR', 'DANJUMA', 'BALOGUN', 'NWOSU', 'YUSUF', 'OGUNLEYE', 'OBI', 'SULEIMAN', 'EZE'];
-    const seed = cleanAccount.split('').reduce((acc, digit) => acc + parseInt(digit, 10), 0);
-    const resolvedName = `${firstNames[seed % firstNames.length]} ${lastNames[(seed + 3) % lastNames.length]}`;
-
+    // Reject unresolved accounts per strict requirements: no fake or random names
     return {
-      statusCode: 200,
+      statusCode: 422,
       headers: CORS_HEADERS,
       body: JSON.stringify({
-        success: true,
-        accountNumber: cleanAccount,
-        accountName: resolvedName,
-        bankName: resolvedBankName,
-        provider: 'Bank Verification',
+        success: false,
+        message: "We couldn't verify this account. Please check the bank and account number.",
       }),
     };
   } catch (err: unknown) {

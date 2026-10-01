@@ -6,8 +6,8 @@
       "phone": "07075817357",
       "email": "moriobee44@gmail.com",
       "ninMasked": "•••••••4821",
-      "loginPasswordHash": "b4c3e02e03c5cba0340c285a2304b23588baef29507c49527abfc4c447d36561",
-      "transactionPinHash": "dcdc377448b1b0cddbb89d192fea3f2acd477fdfd53d9e52fa8e5e021c7234cc",
+      "loginPasswordHash": "615cf99a20726a47ad691da88059834c33d8c5ec47420d8894b84bdaa9160edc",
+      "transactionPinHash": "a81ced1b8da7a0b6db36b614fd3f073ca8d48069bcdb9d1c4b3c482f5b3b070f",
       "pinSalt": "OPAY_SECURE_NIGERIA_BANKING_SALT_2026",
       "failedPinAttempts": 0,
       "pinLockoutUntil": null,
@@ -711,7 +711,7 @@
           "lastUsedAt": 1790682478050
         }
       ],
-      "lastLoginAt": 1790765830918
+      "lastLoginAt": 1790893319548
     },
     {
       "id": "acc-lateefat-user-b",
@@ -1182,6 +1182,376 @@
       ],
       "recentRecipients": [],
       "mustResetPassword": false
+    },
+    {
+      "id": "acc-8138293168-muq3pt3e",
+      "fullName": "AYOMIDE PAUL",
+      "phone": "08138293168",
+      "normalizedPhone": "08138293168",
+      "email": "08138293168@opay.ng",
+      "role": "user",
+      "ninMasked": "•••••••3168",
+      "loginPasswordHash": "7d01fedc42aa7d68ef7e8bbf855f87fc1e3d908f1ff630d855bf42409bfe7c5a",
+      "passwordSalt": "OPAY_1790893443722_8625e79f",
+      "transactionPinHash": "71edec292df7e28bbc7cf178e02658513c08f72cde238995f4370129f2267815",
+      "pinSalt": "OPAY_1790893443722_8625e79f",
+      "failedPinAttempts": 0,
+      "pinLockoutUntil": null,
+      "accountStatus": "active",
+      "lastLoginAt": 0,
+      "verificationStatus": "account_active",
+      "verificationLog": {
+        "ninVerifiedAt": 1790893443722,
+        "ninMasked": "•••••••3168",
+        "faceVerifiedAt": 1790893443722,
+        "livenessScore": 99.4,
+        "facialMatchScore": 98.2,
+        "auditReference": "OPAY_BIO_OWNER_1790893443722",
+        "provider": "NIMC / OPay Identity Verification Gateway"
+      },
+      "accountNumber": "8138293168",
+      "balanceNgn": 489000,
+      "createdAt": 1790893443722,
+      "userProfile": {
+        "name": "AYOMIDE",
+        "fullName": "AYOMIDE PAUL",
+        "phone": "+2348138293168",
+        "accountNumber": "8138293168",
+        "tier": 3,
+        "tierName": "Tier 3 (Verified)",
+        "dailyLimitNgn": 5000000,
+        "singleMaxNgn": 1000000,
+        "avatarUrl": "",
+        "todaySalesNgn": 0,
+        "savingsBalanceNgn": 0,
+        "owealthBalanceNgn": 489000,
+        "cashbackPointsNgn": 500,
+        "isKycVerified": true,
+        "email": "08138293168@opay.ng",
+        "bvnLinked": true,
+        "ninLinked": true,
+        "gender": "Verified",
+        "dob": "**-**-**",
+        "nickname": "AYOMIDE",
+        "address": "Lagos, Nigeria"
+      },
+      "transactions": [
+        {
+          "id": "tx-airtime-1790893479965-iu64",
+          "userId": "acc-8138293168-muq3pt3e",
+          "reference": "OPAY2610019EZSF8",
+          "type": "airtime",
+          "title": "MTN AIRTIME",
+          "description": "MTN Airtime Wallet Funding for +2348138293168",
+          "amountNgn": 2000,
+          "status": "successful",
+          "timestamp": 1790893479965,
+          "createdTimestamp": 1790893479965,
+          "sender": {
+            "name": "AYOMIDE PAUL",
+            "accountOrPhone": "8138293168",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "MTN Service",
+            "accountOrPhone": "+2348138293168",
+            "bankName": "MTN"
+          },
+          "feeNgn": 0,
+          "category": "outflow",
+          "balanceAfterNgn": 489000,
+          "sessionId": "26017908934799654340"
+        },
+        {
+          "id": "tx-airtime-1790893479426-vm0m",
+          "userId": "acc-8138293168-muq3pt3e",
+          "reference": "OPAY261001SNFND9",
+          "type": "airtime",
+          "title": "MTN AIRTIME",
+          "description": "MTN Airtime Wallet Funding for +2348138293168",
+          "amountNgn": 2000,
+          "status": "successful",
+          "timestamp": 1790893479426,
+          "createdTimestamp": 1790893479426,
+          "sender": {
+            "name": "AYOMIDE PAUL",
+            "accountOrPhone": "8138293168",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "MTN Service",
+            "accountOrPhone": "+2348138293168",
+            "bankName": "MTN"
+          },
+          "feeNgn": 0,
+          "category": "outflow",
+          "balanceAfterNgn": 491000,
+          "sessionId": "26017908934794268393"
+        },
+        {
+          "id": "tx-airtime-1790893478748-d1r1",
+          "userId": "acc-8138293168-muq3pt3e",
+          "reference": "OPAY261001DUCMGG",
+          "type": "airtime",
+          "title": "MTN AIRTIME",
+          "description": "MTN Airtime Wallet Funding for +2348138293168",
+          "amountNgn": 2000,
+          "status": "successful",
+          "timestamp": 1790893478748,
+          "createdTimestamp": 1790893478748,
+          "sender": {
+            "name": "AYOMIDE PAUL",
+            "accountOrPhone": "8138293168",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "MTN Service",
+            "accountOrPhone": "+2348138293168",
+            "bankName": "MTN"
+          },
+          "feeNgn": 0,
+          "category": "outflow",
+          "balanceAfterNgn": 493000,
+          "sessionId": "26017908934787487076"
+        },
+        {
+          "id": "tx-airtime-1790893472930-64l8",
+          "userId": "acc-8138293168-muq3pt3e",
+          "reference": "OPAY261001FZ4EXG",
+          "type": "airtime",
+          "title": "MTN AIRTIME",
+          "description": "MTN Airtime Wallet Funding for +2348138293168",
+          "amountNgn": 5000,
+          "status": "successful",
+          "timestamp": 1790893472930,
+          "createdTimestamp": 1790893472930,
+          "sender": {
+            "name": "AYOMIDE PAUL",
+            "accountOrPhone": "8138293168",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "MTN Service",
+            "accountOrPhone": "+2348138293168",
+            "bankName": "MTN"
+          },
+          "feeNgn": 0,
+          "category": "outflow",
+          "balanceAfterNgn": 495000,
+          "sessionId": "26017908934729303989"
+        },
+        {
+          "id": "tx-dep-1790893463277-fltd",
+          "userId": "acc-8138293168-muq3pt3e",
+          "reference": "OPAY261001XIUD28",
+          "type": "deposit",
+          "title": "Bank Transfer Top-up",
+          "description": "Bank Inflow Deposit",
+          "amountNgn": 500000,
+          "status": "successful",
+          "timestamp": 1790893463277,
+          "createdTimestamp": 1790893463277,
+          "sender": {
+            "name": "Bank Inflow Deposit",
+            "accountOrPhone": "BANK-TOPUP",
+            "bankName": "Commercial Bank"
+          },
+          "recipient": {
+            "name": "AYOMIDE PAUL",
+            "accountOrPhone": "8138293168",
+            "bankName": "OPay"
+          },
+          "feeNgn": 0,
+          "category": "inflow",
+          "balanceAfterNgn": 500000,
+          "sessionId": "26017908934632771303"
+        }
+      ],
+      "cards": [],
+      "safeBoxes": [],
+      "activeLoan": {
+        "loanLimitNgn": 200000,
+        "currentBorrowedNgn": 0,
+        "dueDate": 1793485443722,
+        "dailyInterestPercent": 0.1,
+        "status": "eligible"
+      },
+      "notifications": [
+        {
+          "id": "notif-tx-airtime-1790893479965-iu64",
+          "title": "MTN AIRTIME Successful",
+          "message": "MTN Airtime Wallet Funding for +2348138293168. ₦2,000.00.",
+          "timestamp": 1790893479965,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-airtime-1790893479965-iu64",
+          "amountNgn": 2000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-tx-airtime-1790893479426-vm0m",
+          "title": "MTN AIRTIME Successful",
+          "message": "MTN Airtime Wallet Funding for +2348138293168. ₦2,000.00.",
+          "timestamp": 1790893479426,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-airtime-1790893479426-vm0m",
+          "amountNgn": 2000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-tx-airtime-1790893478748-d1r1",
+          "title": "MTN AIRTIME Successful",
+          "message": "MTN Airtime Wallet Funding for +2348138293168. ₦2,000.00.",
+          "timestamp": 1790893478748,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-airtime-1790893478748-d1r1",
+          "amountNgn": 2000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-tx-airtime-1790893472930-64l8",
+          "title": "MTN AIRTIME Successful",
+          "message": "MTN Airtime Wallet Funding for +2348138293168. ₦5,000.00.",
+          "timestamp": 1790893472930,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-airtime-1790893472930-64l8",
+          "amountNgn": 5000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-dep-1790893463277",
+          "title": "Money Added Successfully 💰",
+          "message": "₦500,000.00 has been credited to your OPay wallet.",
+          "timestamp": 1790893463277,
+          "read": false,
+          "type": "transaction",
+          "transactionId": "tx-dep-1790893463277-fltd",
+          "amountNgn": 500000,
+          "status": "successful"
+        },
+        {
+          "id": "notif-welcome-1790893443722",
+          "title": "Welcome to OPay 🛡️",
+          "message": "Welcome to OPay, AYOMIDE PAUL! Your account (8138293168) is active and ready.",
+          "timestamp": 1790893443722,
+          "read": false,
+          "type": "security"
+        }
+      ],
+      "recentRecipients": [
+        {
+          "id": "recip-1790893479965",
+          "name": "MTN Service",
+          "account": "+2348138293168",
+          "bank": "MTN",
+          "isOpay": false,
+          "lastUsedAt": 1790893479965
+        }
+      ]
+    },
+    {
+      "id": "acc-8133445566-muq3y2qb",
+      "fullName": "OLUMIDE JOHNSON",
+      "phone": "08133445566",
+      "normalizedPhone": "08133445566",
+      "email": "08133445566@opay.ng",
+      "role": "user",
+      "ninMasked": "•••••••5566",
+      "loginPasswordHash": "30f5851e74bda19d5d296dbc62a6163339ed660bdd772638ca552a52ead5d977",
+      "passwordSalt": "OPAY_1790893829459_a03b4a15",
+      "transactionPinHash": "c050f45a4d983ae47498e561409b53bd7893ef756535f0c59139a9d52ff0bfa3",
+      "pinSalt": "OPAY_1790893829459_a03b4a15",
+      "failedPinAttempts": 0,
+      "pinLockoutUntil": null,
+      "accountStatus": "active",
+      "lastLoginAt": 1790893829482,
+      "verificationStatus": "account_active",
+      "verificationLog": {
+        "ninVerifiedAt": 1790893829460,
+        "ninMasked": "•••••••5566",
+        "faceVerifiedAt": 1790893829460,
+        "livenessScore": 99.4,
+        "facialMatchScore": 98.2,
+        "auditReference": "OPAY_BIO_OWNER_1790893829460",
+        "provider": "NIMC / OPay Identity Verification Gateway"
+      },
+      "accountNumber": "8133445566",
+      "balanceNgn": 30000,
+      "createdAt": 1790893829460,
+      "userProfile": {
+        "name": "OLUMIDE",
+        "fullName": "OLUMIDE JOHNSON",
+        "phone": "+2348133445566",
+        "accountNumber": "8133445566",
+        "tier": 3,
+        "tierName": "Tier 3 (Verified)",
+        "dailyLimitNgn": 5000000,
+        "singleMaxNgn": 1000000,
+        "avatarUrl": "",
+        "todaySalesNgn": 0,
+        "savingsBalanceNgn": 0,
+        "owealthBalanceNgn": 0,
+        "cashbackPointsNgn": 500,
+        "isKycVerified": true,
+        "email": "08133445566@opay.ng",
+        "bvnLinked": true,
+        "ninLinked": true,
+        "gender": "Verified",
+        "dob": "**-**-**",
+        "nickname": "OLUMIDE",
+        "address": "Lagos, Nigeria"
+      },
+      "transactions": [
+        {
+          "id": "tx-open-1790893829460",
+          "userId": "acc-8133445566-muq3y2qc",
+          "reference": "OPAYMUQ3Y2QC",
+          "type": "deposit",
+          "title": "Initial Deposit / Opening Balance",
+          "description": "Account Opening Balance",
+          "amountNgn": 30000,
+          "status": "successful",
+          "timestamp": 1790893829460,
+          "createdTimestamp": 1790893829460,
+          "sender": {
+            "name": "MUSARAF OLAWALE ABDULAZEEZ",
+            "accountOrPhone": "07075817357",
+            "bankName": "OPay"
+          },
+          "recipient": {
+            "name": "OLUMIDE JOHNSON",
+            "accountOrPhone": "8133445566",
+            "bankName": "OPay"
+          },
+          "feeNgn": 0,
+          "category": "inflow",
+          "balanceAfterNgn": 30000
+        }
+      ],
+      "cards": [],
+      "safeBoxes": [],
+      "activeLoan": {
+        "loanLimitNgn": 200000,
+        "currentBorrowedNgn": 0,
+        "dueDate": 1793485829460,
+        "dailyInterestPercent": 0.1,
+        "status": "eligible"
+      },
+      "notifications": [
+        {
+          "id": "notif-welcome-1790893829460",
+          "title": "Welcome to OPay 🛡️",
+          "message": "Welcome to OPay, OLUMIDE JOHNSON! Your account (8133445566) is active and ready.",
+          "timestamp": 1790893829460,
+          "read": false,
+          "type": "security"
+        }
+      ],
+      "recentRecipients": [],
+      "mustResetPassword": false
     }
   ],
   "processedBscTxIds": [],
@@ -1249,6 +1619,98 @@
     "3f7990b07aec79145f0085612b8ab289dcfca7f1e366d491d0fc3081a0476b26": {
       "accountId": "acc-musaraf-default",
       "createdAt": 1790765830919
+    },
+    "ba76cb1b3bf9ef0bf6ea1ab520c4a1f292e498344eacf28b5912d6475be01fef": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790853732185
+    },
+    "d2e0e21fa1000f5ca17be5f3713d98abdf9438b71da55cfe8c054b8150aa036b": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149514
+    },
+    "58e630fa0109f981de4ec016fa126f5371545fc420e97d461090789ea4b509e8": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149539
+    },
+    "298ea6c4a6918cb9509eff4aa2374c0e15b173bb3f40ff028b42878e0b10e8b7": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149549
+    },
+    "e1f97225a0dd8f85969dec5b0d33d9295c3e7d7a6fa76018290af9b5b76a91d4": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149558
+    },
+    "852d7412935b209ce76a78b25ff9cedb05a6c98c6a0ccb31a35236479e920cf4": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149567
+    },
+    "307abb77e115a928fba7b484b6ca5ece70573318f3887821fb2ea4c841768eb6": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149575
+    },
+    "3cbbbed279684e4fa9e4cfc37c4d766aab1688aebb1c901b28188193f3e8009f": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149586
+    },
+    "1d0dc826a9c485bde804a92f1568f8a25057b24e964618de64b74b8b84367ccb": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149597
+    },
+    "89fb5a685d170cf4a8a980680ade67845ecc14e5f5a0ace21a592482709117ef": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149613
+    },
+    "5c00029e289eeb63ff180d4e243458c7dae5ad33729b894d8b1001e7523cee99": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854149623
+    },
+    "487336e2f954874b8c15b134985ffdcc0e4a24f2bfe50b7e38e6e50607d1fc7e": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854311558
+    },
+    "9d63d6139268eea5cdcd168720ebc3837a76eaa7a2e7d8499022504eeda9cdd1": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854311581
+    },
+    "520168f677d06774c69607db9c908629f6ffeff79ba54a05b61791ce13776c05": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854311590
+    },
+    "39955d2842b553ac6e8ea532d88a7def7b79d33c7e9b3ce3edb880f1234fc46b": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790854444932
+    },
+    "60b331d38399c0863db07587378516ce809b84e2be6b0aa3eac143b439855d51": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892277193
+    },
+    "1d4f8e0859913538d0fe124d5206c95cf52ecd452098357188ce8512151baf5d": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892277214
+    },
+    "028a8c1a05b37bb68e108f71d476f3c0a4330109b9e8a51e9f09349cb5c46ac3": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892649948
+    },
+    "a31c545a629dc1fcd46b85b019fe717305511c2c8c75f34ff273a3cc3bfeb268": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892649964
+    },
+    "f3e87b705147e03d68eb0c528780c760f6b4ded6ee2d7f097702e2333ee9db31": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892649969
+    },
+    "cf2eb10a7174a3d0d54838511ff0053c5ba31261bb9ce3e703dbcf9df9f94719": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790892649974
+    },
+    "c2ecf7a23bd61c7339eb9c676c10e08ac5b8ce5d685c86fc1a93fefa0d361bba": {
+      "accountId": "acc-musaraf-default",
+      "createdAt": 1790893319549
+    },
+    "7d8110e6a5f8a7fd92f73da9e17fd2bb2fba4e137f3c9983eb5697f89667163c": {
+      "accountId": "acc-8133445566-muq3y2qb",
+      "createdAt": 1790893829483
     }
   }
 }

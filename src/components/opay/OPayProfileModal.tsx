@@ -138,10 +138,10 @@ export const OPayProfileModal: React.FC<OPayProfileModalProps> = ({ onClose }) =
     if (!adminSearchQuery.trim()) return true;
     const q = adminSearchQuery.trim().toLowerCase();
     return (
-      acc.fullName.toLowerCase().includes(q) ||
-      acc.phone.includes(q) ||
-      acc.accountNumber.includes(q) ||
-      acc.email.toLowerCase().includes(q)
+      (acc.fullName || '').toLowerCase().includes(q) ||
+      (acc.phone || '').includes(q) ||
+      (acc.accountNumber || '').includes(q) ||
+      (acc.email || '').toLowerCase().includes(q)
     );
   });
 
